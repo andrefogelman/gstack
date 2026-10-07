@@ -1,15 +1,15 @@
 <!-- AUTO-GENERATED from greptile.md.tmpl — do not edit directly -->
 <!-- Regenerate: bun run gen:skill-docs -->
-## Step 10: Address Greptile review comments (if PR exists)
+## Step 10: Address Pullfrog review comments (if PR exists)
 
 Dispatch a subagent through Agent with `subagent_type: "general-purpose"` and
 `run_in_background: false`, using Step 7's shared foreground-dispatch rule.
-It fetches and classifies all Greptile comments,
+It fetches and classifies all Pullfrog comments,
 including escalation tiers; the parent handles decisions and queues approved fixes.
 
 **Subagent prompt:**
 
-> You are classifying Greptile review comments for a /ship workflow. Read `~/.claude/skills/gstack/review/greptile-triage.md` and follow the fetch, filter, classify, and **escalation detection** steps. Do NOT fix code, do NOT reply to comments, do NOT commit — report only.
+> You are classifying Pullfrog review comments for a /ship workflow. Read `~/.claude/skills/gstack/review/greptile-triage.md` and follow the fetch, filter, classify, and **escalation detection** steps. Do NOT fix code, do NOT reply to comments, do NOT commit — report only.
 >
 > For each comment, assign: `classification` (`valid_actionable`, `already_fixed`, `false_positive`, `suppressed`), `escalation_tier` (1 or 2), the file:line or [top-level] tag, body summary, and permalink URL.
 >
@@ -23,17 +23,17 @@ Parse the LAST line as JSON. Require the declared status, a nonnegative integer
 total matching the comments array, and the status/reason invariants above. An
 unknown or missing status is unavailable, never an empty successful review.
 
-For `no_pr`, record "Greptile: no PR exists"; for `complete` with zero comments,
-record "Greptile: fetched, zero comments". Both continue to Step 11.
+For `no_pr`, record "Pullfrog: no PR exists"; for `complete` with zero comments,
+record "Pullfrog: fetched, zero comments". Both continue to Step 11.
 
 **Unavailable triage:** A returned `unavailable`, failed dispatch, invalid result,
 or missing completion after ~10 minutes takes this route. Stop a running child
-and confirm it stopped before continuing. Print `Greptile triage did not complete — review the PR comments manually`.
-Include `Greptile triage: UNAVAILABLE (dispatch failed)` and the actual reason in
+and confirm it stopped before continuing. Print `Pullfrog triage did not complete — review the PR comments manually`.
+Include `Pullfrog triage: UNAVAILABLE (dispatch failed)` and the actual reason in
 Step 19's review results; Step 20 has no triage field. Continue to Step 11 without
 claiming zero comments or completed triage. This optional triage does not block ship.
 
-Otherwise, print: `+ {total} Greptile comments ({valid_actionable} valid, {already_fixed} already fixed, {false_positive} FP)`.
+Otherwise, print: `+ {total} Pullfrog comments ({valid_actionable} valid, {already_fixed} already fixed, {false_positive} FP)`.
 
 For each comment in `comments`:
 
@@ -41,20 +41,20 @@ For each comment in `comments`:
 - The comment (file:line or [top-level] + body summary + permalink URL)
 - `RECOMMENDATION: Choose A because [one-line reason]`
 - Options: A) Fix now, B) Acknowledge and ship anyway, C) It's a false positive
-- If user chooses A: queue the approved fix without editing here. After that fix passes review and tests, use the **Fix reply template** from greptile-triage.md (inline diff + explanation) and save per-project/global greptile-history (type: fix).
-- If user chooses C: reply using the **False Positive reply template** from greptile-triage.md (include evidence + suggested re-rank), save to both per-project and global greptile-history (type: fp).
+- If user chooses A: queue the approved fix without editing here. After that fix passes review and tests, use the **Fix reply template** from greptile-triage.md (inline diff + explanation) and save per-project/global pullfrog-history (type: fix).
+- If user chooses C: reply using the **False Positive reply template** from greptile-triage.md (include evidence + suggested re-rank), save to both per-project and global pullfrog-history (type: fp).
 
 **VALID BUT ALREADY FIXED:** Reply using the **Already Fixed reply template** from greptile-triage.md — no AskUserQuestion needed:
 - Include what was done and the fixing commit SHA
-- Save to both per-project and global greptile-history (type: already-fixed)
+- Save to both per-project and global pullfrog-history (type: already-fixed)
 
 **FALSE POSITIVE:** Use AskUserQuestion:
 - Show the comment and why you think it's wrong (file:line or [top-level] + body summary + permalink URL)
 - Options:
-  - A) Reply to Greptile explaining the false positive (recommended if clearly wrong)
+  - A) Reply to Pullfrog explaining the false positive (recommended if clearly wrong)
   - B) Fix it anyway (if trivial)
   - C) Ignore silently
-- If user chooses A: reply using the **False Positive reply template** from greptile-triage.md (include evidence + suggested re-rank), save to both per-project and global greptile-history (type: fp)
+- If user chooses A: reply using the **False Positive reply template** from greptile-triage.md (include evidence + suggested re-rank), save to both per-project and global pullfrog-history (type: fp)
 - If user chooses B: queue the approved fix, as above.
 
 **SUPPRESSED:** Skip silently — these are known false positives from previous triage.

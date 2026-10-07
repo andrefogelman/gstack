@@ -1862,7 +1862,7 @@ If skipped fingerprints exist, get the list of files changed since that review:
 git diff --name-only <prior-review-commit> HEAD
 \`\`\`
 
-For every combined finding, including core, specialist, exploratory QA, adversarial and valid actionable Greptile findings, check:
+For every combined finding, including core, specialist, exploratory QA, adversarial and valid actionable Pullfrog findings, check:
 - Does its fingerprint match a previously skipped finding?
 - Is the finding's file path NOT in the changed-files set?
 - Is it the same advisory/defect kind? Never use a skipped advisory to suppress a real defect, including a defect with a colliding supplied fingerprint.
