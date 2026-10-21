@@ -1,5 +1,16 @@
 # Changelog
 
+## [1.91.173.0] - 2026-10-20
+
+**Merge trains can merge slot 2 onward.** After slot 1 merges, main carries the new stamp, so every later pin conflicts with main on the stamp files and GitHub can't squash it. A lane makes its PR mergeable by merging main into the pin before it stamps. `verify --pr <n> --train <nonce>` refused that head as moved off its pin. Now it also accepts a head whose tree equals the slot's train prefix (T<i>) modulo stamps: exactly the tree the train's gate covered, and what main becomes once the PR squash-merges. The first live train stopped at slot 2 on this (gate.train-ac4baf961759-43d6ed28f2bf-9a1dbb). Plan GSTA-49.
+
+### Fixed
+- **`lib/ship-queue-train-verify.ts`** accepts a slot head that is either its pin plus stamps (as before) or T<i> modulo stamps, and the `head:` line says which. A head that matches neither is still `QUEUE_TRAIN_MOVED`, and the queue still freezes when earlier slots have merged.
+- **`docs/ship-policy.md`** gives the per-slot lane procedure from slot 2 on: merge `origin/main` into the pin, resolve the CHANGELOG conflict with `mergeChangelogs`, then run `gstack-restamp --next`.
+
+### Gate integrity
+- `test/ship-queue-train.test.ts` builds a lane head with main merged into the pin and T2's tree stamped 1.2.5.0. It verifies, with `MERGE_CONDITION` at that head. The same head plus one file outside the train fails with `QUEUE_TRAIN_MOVED`. Without the fix, the positive case fails.
+
 ## [1.91.172.0] - 2026-10-20
 
 **gstack now works the way Capy Captains run work: every decision goes to the Captain (or the person) in plain words, plan approvals arrive in a fixed before/after shape, each thread keeps a record of who approved what, and /ship's PR body shows before/after images of what changed.** Garry asked for this on 2026-10-20 ("make it much more obvious a/ how approvals work per thread, b/ for each plan approval i want a before/after, why it matters, what caused us to work on this, and big decisions you had to make, c/ when asking for merge guidance i want the PRs to show screenshots of what changed and why"). Everything below applies only when `GSTACK_CAPY=1` (the Capy launch line sets it). Other hosts keep their output, apart from one new `CAPY: off` STATUS line.
