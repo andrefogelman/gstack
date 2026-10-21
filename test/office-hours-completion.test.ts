@@ -1,9 +1,10 @@
 import { renderOfficeHoursReviewerPrompt, renderOfficeHoursReview, extractOfficeHoursReviewBlock, officeHoursVerdictReceipt, officeHoursDesignChanges, type OfficeHoursReview } from '../lib/office-hours-review';
+import { verifySpecFixesAtCap } from '../lib/spec-review-cap';
 import { describe, expect, test } from 'bun:test';
 import * as fs from 'node:fs';
 import * as path from 'node:path';
 import * as os from 'node:os';
-import { validateOfficeHoursCompletion, validateOfficeHoursDesignDraft, validateOfficeHoursReviewerHandoffs, validateOfficeHoursReviewArtifacts, validateOfficeHoursReviewPreservation, type OfficeHoursCompletionEvidence } from './helpers/office-hours-completion';
+import { observedSpecFixes, validateOfficeHoursCompletion, validateOfficeHoursDesignDraft, validateOfficeHoursReviewerHandoffs, validateOfficeHoursReviewArtifacts, validateOfficeHoursReviewPreservation, type OfficeHoursCompletionEvidence } from './helpers/office-hours-completion';
 import { E2E_TOUCHFILES } from './helpers/touchfiles-data';
 import { selectTests } from './helpers/test-selection';
 import { expectMentions } from './helpers/prompt-structure';
@@ -723,7 +724,9 @@ describe('office-hours mechanical review evidence', () => {
         evidence: `The Recommended Approach still omits the original obligation: ${problems[i][1]}`, current_id: `R2-${i + 1}` })),
     });
     const rounds = [round(1), round(2)];
-    const rendered = renderOfficeHoursReview(rounds);
+    // Stopped at the cap (CONVERGENCE): the finalizer records the unresolved gaps against the round-2 snapshot (plan B8).
+    const cap = verifySpecFixesAtCap(rounds[1]!, reviewed(2), design.replace(/## Reviewer Concerns[\s\S]*/, ''), null);
+    const rendered = renderOfficeHoursReview(rounds, undefined, 3, cap);
     const evidence = completed();
     evidence.designContent = design.replace(/## Reviewer Concerns[\s\S]*/, rendered.concerns);
     evidence.output = report.replace(/## Spec Review[\s\S]*?(?=## Handoff)/, `${rendered.report}\n\n`);
@@ -733,7 +736,7 @@ describe('office-hours mechanical review evidence', () => {
       evidence.toolCalls.push({ tool: 'Agent', input: { prompt: `Review ${designPath}; write ${artifact.path}.` }, output: officeHoursVerdictReceipt(i + 1, artifact.path, artifact.content) });
       evidence.toolCalls.push({ tool: 'Write', input: { file_path: artifact.path, content: artifact.content } });
     }
-    return { evidence, artifacts, rounds };
+    return { evidence, artifacts, rounds, cap };
   }
 
   function handoffs(useRead = false) {
@@ -876,7 +879,8 @@ describe('office-hours mechanical review evidence', () => {
       rounds[1].findings.push({ id: 'R2-7', dimension: 'feasibility', severity: 'blocking', changed_text: citation,
         problem: 'The revision note claims a fix the design does not contain.', remedy: 'Remove the note or make the fix.' });
       rounds[1].dimensions.feasibility = 'ISSUES';
-      const rendered = renderOfficeHoursReview(rounds);
+      const cap = verifySpecFixesAtCap(rounds[1]!, reviewed(2), design.replace(/## Reviewer Concerns[\s\S]*/, ''), null);
+      const rendered = renderOfficeHoursReview(rounds, undefined, 3, cap);
       evidence.designContent = evidence.designContent!.replace(/<!-- gstack:office-hours:concerns:start -->[\s\S]*<!-- gstack:office-hours:concerns:end -->/, rendered.concerns);
       evidence.output = evidence.output.replace(/<!-- gstack:office-hours:report:start -->[\s\S]*<!-- gstack:office-hours:report:end -->/, rendered.report);
       artifacts[1].content = JSON.stringify(rounds[1]);
@@ -897,7 +901,7 @@ describe('office-hours mechanical review evidence', () => {
     try {
       // Existing synthetic review history exercises the real writer and validators;
       // this is not a replay of a successful native/model completion.
-      const { evidence, artifacts, rounds } = JSON.parse(JSON.stringify(handoffs())
+      const { evidence, artifacts, rounds, cap } = JSON.parse(JSON.stringify(handoffs())
         .replaceAll('/tmp/office-hours-fixture', dir.replaceAll('\\', '/')));
       // Relocated artifacts have new bytes, so their receipts are reissued.
       evidence.toolCalls.filter((call: { output?: string }) => call.output?.startsWith('OFFICE_HOURS_VERDICT '))
@@ -930,7 +934,7 @@ Next: /plan-eng-review after observing the workflow. The user declined launching
         'finalize', '--design', evidence.designPath, '--report', reportPath, ...artifacts.map((artifact: { path: string }) => artifact.path)],
       { cwd: dir, timeout: 5000 });
       expect(result.exitCode, result.stderr.toString()).toBe(0);
-      const rendered = renderOfficeHoursReview(rounds);
+      const rendered = renderOfficeHoursReview(rounds, undefined, 3, cap);
       const output = fs.readFileSync(reportPath, 'utf8');
       expect(fs.readFileSync(evidence.designPath).equals(beforeDesign)).toBe(true);
       expect(output).toContain(closing.trim());
@@ -947,6 +951,42 @@ Next: /plan-eng-review after observing the workflow. The user declined launching
       expect(() => validateOfficeHoursCompletion({ ...evidence, exitReason: 'timeout' })).toThrow('execution failed: timeout');
       const changed = output.replace(rounds.at(-1).findings[0].remedy, 'A shorter different remedy.');
       expect(() => checkArtifacts({ ...evidence, output: changed }, artifacts, snapshots)).toThrow();
+    } finally { fs.rmSync(dir, { recursive: true, force: true }); }
+  });
+
+  test('cap fixes the agent saved and passed to finalize validate; without them the report mismatches (marathon rerun 2026-10-19)', () => {
+    const dir = fs.mkdtempSync(path.join(os.tmpdir(), 'office-hours-cap-fixes-'));
+    try {
+      const { evidence, artifacts } = JSON.parse(JSON.stringify(structured())
+        .replaceAll('/tmp/office-hours-fixture', dir.replaceAll('\\', '/')));
+      evidence.toolCalls.filter((call: { output?: string }) => call.output?.startsWith('OFFICE_HOURS_VERDICT '))
+        .forEach((call: { output?: string }, i: number) => { call.output = officeHoursVerdictReceipt(i + 1, artifacts[i].path, artifacts[i].content); });
+      const applied = 'An absent mapped column stops the import and names the missing column.';
+      const fixes = [{ id: 'R2-1', applied_text: applied }];
+      const reviewDir = path.dirname(artifacts[0].path);
+      const fixesPath = path.join(reviewDir, 'fixes.json');
+      const reportPath = path.join(dir, 'REPORT.md');
+      fs.mkdirSync(path.dirname(evidence.designPath), { recursive: true });
+      fs.writeFileSync(evidence.designPath, evidence.designContent.replace('# Design: RosterCheck\n', `# Design: RosterCheck\n\n${applied}\n`));
+      fs.writeFileSync(reportPath, evidence.output);
+      fs.mkdirSync(reviewDir, { recursive: true });
+      for (const artifact of artifacts) fs.writeFileSync(artifact.path, artifact.content);
+      const snapshots = snapshotsIn(reviewDir);
+      for (const snapshot of snapshots) fs.writeFileSync(snapshot.path, snapshot.content);
+      fs.writeFileSync(fixesPath, JSON.stringify(fixes));
+      const result = Bun.spawnSync([process.execPath, path.resolve(import.meta.dir, '../bin/gstack-office-hours-review'),
+        'finalize', '--design', evidence.designPath, '--report', reportPath, '--fixes', fixesPath, ...artifacts.map((artifact: { path: string }) => artifact.path)],
+      { cwd: dir, timeout: 5000 });
+      expect(result.exitCode, result.stderr.toString()).toBe(0);
+      expect(JSON.parse(result.stdout.toString()).cap.verified).toEqual(['R2-1']);
+      evidence.output = fs.readFileSync(reportPath, 'utf8');
+      evidence.designContent = fs.readFileSync(evidence.designPath, 'utf8');
+      evidence.toolCalls.push({ tool: 'Write', input: { file_path: fixesPath, content: JSON.stringify(fixes) } });
+      expect(observedSpecFixes(evidence.toolCalls)).toEqual(fixes);
+      expect(() => checkArtifacts({ ...evidence, fixes: observedSpecFixes(evidence.toolCalls) }, artifacts, snapshots)).not.toThrow();
+      expect(() => checkArtifacts(evidence, artifacts, snapshots)).toThrow('Spec Review does not match');
+      expect(() => checkArtifacts({ ...evidence, fixes: [{ id: 'R2-2', applied_text: applied }] }, artifacts, snapshots)).toThrow('Spec Review does not match');
+      expect(observedSpecFixes(evidence.toolCalls.filter((call: { input?: { file_path?: string } }) => call.input?.file_path !== fixesPath))).toBeNull();
     } finally { fs.rmSync(dir, { recursive: true, force: true }); }
   });
 
@@ -998,6 +1038,20 @@ Next: /plan-eng-review after observing the workflow. The user declined launching
     const { evidence, artifacts } = structured();
     evidence.toolCalls = evidence.toolCalls.filter(call => call.input?.file_path !== artifacts[1].path);
     expect(() => checkArtifacts(evidence, artifacts)).toThrow('observed JSON Write');
+  });
+
+  test('a seal error recovered by a complete re-Write passes; the same recovery by Edit is not the observed Write', () => {
+    const recovered = structured();
+    const final = recovered.evidence.toolCalls.findLastIndex(call => call.input?.file_path === recovered.artifacts[1].path);
+    recovered.evidence.toolCalls.splice(final, 0,
+      { tool: 'Write', input: { file_path: recovered.artifacts[1].path, content: recovered.artifacts[1].content.replace('"round":2', '"round":3') } },
+      { tool: 'Bash', input: { command: 'gstack-office-hours-review seal --design design.md --verdict round-2.json round-1.json' }, output: 'Error: verdict round does not match' });
+    expect(() => checkArtifacts(recovered.evidence, recovered.artifacts)).not.toThrow();
+    const patched = structured();
+    const write = patched.evidence.toolCalls.findLast(call => call.input?.file_path === patched.artifacts[1].path)!;
+    write.input!.content = patched.artifacts[1].content.replace('"round":2', '"round":3');
+    patched.evidence.toolCalls.push({ tool: 'Edit', input: { file_path: patched.artifacts[1].path, old_string: '"round":3', new_string: '"round":2' } });
+    expect(() => checkArtifacts(patched.evidence, patched.artifacts)).toThrow('artifact differs from its observed Write');
   });
 
   test('accepts relative and dot-segment Writes to the assigned artifact', () => {

@@ -584,7 +584,7 @@ SITE=app.example.com
 DOMAIN=example.com
 $B goto "https://$SITE"
 $B cookie-import-browser opera-gx --domain "$DOMAIN" --profile Default   # or: opera
-$B reload                                                               # confirm the intended account
+$B reload                                                               # view the page; only --verify-auth proves sign-in
 ```
 
 Run `$B cookie-import-browser` with no flags to see which browsers were detected. `--profile` can be omitted when only one profile has cookies for the domain. If the receipt reports App-Bound Encryption, run `$B handoff`, sign in to the intended account in the window that opens, then `$B resume` (needs a display).
@@ -625,6 +625,14 @@ Storage stays intact by default. With explicit approval on a Chromium target, `-
 | `closetab [id]` | Close tab |
 | `tab-each <command> [args...]` | Fan out a command across every open tab; returns JSON |
 | `frame <sel\|@ref\|--name n\|--url pattern\|main>` | Switch to iframe context (or back to main); clears refs |
+
+**A busy tab is not a busy daemon.** `/health` `status` is daemon liveness
+(Chromium connected); the active tab's main thread is reported separately as
+`activeTab: { id, responsive }`, probed for at most 1s. While one page is stuck
+in a long script, `status`, `tabs`, `tab <id>`, `newtab`, `closetab`,
+`state save` and `stop` keep working, and `status` and `tabs` mark the tab as
+not responding. A command that needs the stuck tab times out after 30s and
+names it, so you can switch away or close it without `--force-restart`.
 
 ### Extraction
 
@@ -951,6 +959,42 @@ refuses with a clear hint when both are set; silent override created
 A running daemon with config A meeting a new invocation with config B exits
 1 with a `browse disconnect` hint instead of silently restarting and dropping
 tab state, cookies, or sessions.
+
+### Proxy from environment
+
+Without `--proxy`, `$B` picks the proxy up from the environment (#915). The
+first one set wins:
+
+1. `--proxy <url>`
+2. `BROWSE_PROXY_URL` (`BROWSE_PROXY_URL=direct` turns off steps 3-5)
+3. `HTTPS_PROXY`, then `https_proxy`
+4. `HTTP_PROXY`, then `http_proxy`
+5. `ALL_PROXY`, then `all_proxy`
+6. no proxy (a direct connection)
+
+Values from the environment follow the same credential policy as `--proxy`.
+`socks5h://` is treated as `socks5://`, because Chromium's SOCKS5 already
+resolves names through the proxy. `NO_PROXY` (or `no_proxy`) is translated to
+Chromium's bypass list: `example.com` and `.example.com` cover the domain and
+its subdomains, and CIDR blocks and `host:port` entries pass through.
+Loopback (`localhost`, `127.0.0.1`, `[::1]`) is always bypassed, for every
+proxy source. When a server starts, `$B` prints one line naming the proxy and
+where it came from, with credentials redacted.
+
+- **`warning: HTTPS_PROXY is not a proxy URL browse can use (...)`.** The
+  variable doesn't parse as `scheme://host:port`: a curl-style `host:port`, an
+  unsupported scheme, or a bad port. `$B` connects directly instead of failing
+  every command. Fix: `export HTTPS_PROXY=http://host:port` (or `socks5://`),
+  or set `BROWSE_PROXY_URL=direct` to silence the warning. A bad `--proxy` or
+  `BROWSE_PROXY_URL` is still an error, because those are explicit browse
+  settings and a silent direct connection could expose your real IP address.
+- **`the running browse daemon was started with different proxy settings (<VAR> differs), so it was not reused.`**
+  The proxy and the normalized `NO_PROXY` rules are part of the daemon config,
+  so a session whose environment differs (even by `NO_PROXY` alone) does not
+  silently reuse a daemon that routes differently. The refusal prints the
+  daemon's settings and this session's. Fix: run `browse stop` to restart the
+  daemon with this session's settings (stop works whatever the proxy settings
+  are), or set `BROWSE_PROXY_URL=direct` when the running daemon has no proxy.
 
 **Stealth scope (Layer C, always on).** Every context — headless `launch`,
 `--headed`/`--proxy`, `handoff`, and the `useragent`/`viewport --scale`
