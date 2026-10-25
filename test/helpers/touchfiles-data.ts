@@ -379,7 +379,7 @@ export const E2E_TOUCHFILES: Record<string, string[]> = {
       
     
     "test/fixtures/plan-scope-recovery-av.json",
-    "test/fixtures/design-scope-checkpoint-at.json",'plan-design-review/**', 'test/fixtures/plans/ui-heavy-feature.md', 'test/fixtures/design-ui-focus-capture-39298269902-a1.json', 'test/fixtures/design-ui-focus-capture-39298269902-a2.json', 'test/fixtures/design-ui-focus-capture-39363705692.json', 'test/helpers/claude-pty-runner.ts', 'test/helpers/pty/**',  'test/fixtures/design-ui-boxed-question.json', 'test/helpers/hermetic-skill-runtime.ts',  'test/helpers/pty-trust-dialog.ts',  'test/skill-e2e-plan-design-with-ui.test.ts',  'test/fixtures/eng-d2-truncated-border-0bcd.json',   'test/fixtures/eng-d1-clipped-elision-1579.json', 'test/fixtures/eng-d2-planning-prelude-4d.json', 'test/fixtures/ceo-approach-z-call.json', 'test/fixtures/ceo-approach-z-screen.txt',
+    "test/fixtures/design-scope-checkpoint-at.json",'plan-design-review/**', 'test/fixtures/plans/ui-heavy-feature.md', 'test/fixtures/design-ui-focus-capture-39298269902-a1.json', 'test/fixtures/design-ui-focus-capture-39298269902-a2.json', 'test/fixtures/design-ui-focus-capture-39363705692.json', 'test/fixtures/design-ui-focus-capture-39852003387.json', 'test/helpers/claude-pty-runner.ts', 'test/helpers/pty/**',  'test/fixtures/design-ui-boxed-question.json', 'test/helpers/hermetic-skill-runtime.ts',  'test/helpers/pty-trust-dialog.ts',  'test/skill-e2e-plan-design-with-ui.test.ts',  'test/fixtures/eng-d2-truncated-border-0bcd.json',   'test/fixtures/eng-d1-clipped-elision-1579.json', 'test/fixtures/eng-d2-planning-prelude-4d.json', 'test/fixtures/ceo-approach-z-call.json', 'test/fixtures/ceo-approach-z-screen.txt',
     
 
      "scripts/resolvers/preamble/generate-preamble-bash.ts", "scripts/resolvers/preamble/generate-completion-status.ts",
@@ -477,7 +477,7 @@ export const E2E_TOUCHFILES: Record<string, string[]> = {
     'test/fixtures/ceo-report-permission-fb10.json',  'test/fixtures/plan-floor-permission-fb10.json', 'test/helpers/plan-count-file-permission.ts',  'test/fixtures/plan-edit-cropped-permission-1579.json',  'test/fixtures/plan-count-permission-target-ad-v2.json',  'test/fixtures/design-crop-gutter-ap.json',  'test/fixtures/plan-count-crop-ak.json',  'test/fixtures/plan-count-long-edit-0bcd.json',  'test/fixtures/plan-count-cropped-wrap-6714.json',
     
     "test/fixtures/plan-scope-recovery-av.json",
-    "test/fixtures/design-scope-checkpoint-at.json",'bin/gstack-skill-start', 'bin/gstack-skill-end', 'plan-design-review/**', 'scripts/resolvers/preamble.ts', 'scripts/resolvers/preamble/generate-ask-user-format.ts', 'scripts/resolvers/preamble/generate-completion-status.ts', 'scripts/resolvers/review-dashboard.ts', 'scripts/resolvers/plan-gates.ts', 'scripts/resolvers/spec-review.ts', 'scripts/resolvers/outside-voice-steps.ts', 'scripts/resolvers/review-scope.ts', 'scripts/resolvers/outside-voice.ts', 'test/helpers/claude-pty-runner.ts', 'test/helpers/pty/**',  'test/fixtures/design-ui-boxed-question.json', 'test/helpers/hermetic-skill-runtime.ts',  'test/helpers/pty-trust-dialog.ts',  'test/fixtures/forcing-finding-seeds.ts', 'test/skill-e2e-plan-design-finding-floor.test.ts',  'test/fixtures/eng-d2-truncated-border-0bcd.json',   'test/fixtures/eng-d1-clipped-elision-1579.json', 'test/fixtures/eng-d2-planning-prelude-4d.json', 'test/fixtures/ceo-approach-z-call.json', 'test/fixtures/ceo-approach-z-screen.txt', 'test/helpers/plan-floor-target.ts',  'test/helpers/plan-count-fixture.ts',  'test/helpers/plan-count-artifacts.ts', 
+    "test/fixtures/design-scope-checkpoint-at.json",'bin/gstack-skill-start', 'bin/gstack-skill-end', 'plan-design-review/**', 'scripts/resolvers/preamble.ts', 'scripts/resolvers/preamble/generate-ask-user-format.ts', 'scripts/resolvers/preamble/generate-completion-status.ts', 'scripts/resolvers/review-dashboard.ts', 'scripts/resolvers/plan-gates.ts', 'scripts/resolvers/spec-review.ts', 'scripts/resolvers/outside-voice-steps.ts', 'scripts/resolvers/review-scope.ts', 'scripts/resolvers/outside-voice.ts', 'test/helpers/claude-pty-runner.ts', 'test/helpers/pty/**',  'test/fixtures/design-ui-boxed-question.json', 'test/helpers/hermetic-skill-runtime.ts',  'test/helpers/pty-trust-dialog.ts',  'test/fixtures/forcing-finding-seeds.ts', 'test/fixtures/design-floor-focus-picker.ts', 'test/skill-e2e-plan-design-finding-floor.test.ts',  'test/fixtures/eng-d2-truncated-border-0bcd.json',   'test/fixtures/eng-d1-clipped-elision-1579.json', 'test/fixtures/eng-d2-planning-prelude-4d.json', 'test/fixtures/ceo-approach-z-call.json', 'test/fixtures/ceo-approach-z-screen.txt', 'test/helpers/plan-floor-target.ts',  'test/helpers/plan-count-fixture.ts',  'test/helpers/plan-count-artifacts.ts', 
     
 
      "scripts/resolvers/preamble/generate-preamble-bash.ts",
@@ -1125,6 +1125,10 @@ export const E2E_TOUCHFILES: Record<string, string[]> = {
 
      "scripts/resolvers/preamble/generate-preamble-bash.ts", "scripts/resolvers/preamble/generate-completion-status.ts"
   ],
+  'router-failure-verified-cause': ['SKILL.md.tmpl', 'SKILL.md', 'scripts/resolvers/preamble/generate-test-failure-triage.ts', 'investigate/SKILL.md.tmpl', 'lib/bun-isolation.ts', 'test/skill-e2e-failure-routing.test.ts'],
+  'router-failure-contradicted-cause': ['SKILL.md.tmpl', 'SKILL.md', 'scripts/resolvers/preamble/generate-test-failure-triage.ts', 'investigate/SKILL.md.tmpl', 'lib/bun-isolation.ts', 'test/skill-e2e-failure-routing.test.ts'],
+  'router-failure-triage-resolves': ['SKILL.md.tmpl', 'SKILL.md', 'scripts/resolvers/preamble/generate-test-failure-triage.ts', 'investigate/SKILL.md.tmpl', 'lib/bun-isolation.ts', 'test/skill-e2e-failure-routing.test.ts'],
+  'router-failure-triage-unclear': ['SKILL.md.tmpl', 'SKILL.md', 'scripts/resolvers/preamble/generate-test-failure-triage.ts', 'investigate/SKILL.md.tmpl', 'lib/bun-isolation.ts', 'test/skill-e2e-failure-routing.test.ts'],
 };
 
 /**
@@ -1525,6 +1529,10 @@ export const E2E_TIERS: Record<string, 'gate' | 'periodic' | 'marathon'> = {
   'overlay-harness-claude-dedicated-tools-vs-bash-sonnet': 'periodic',
   'overlay-harness-claude-dedicated-tools-vs-bash-opus-5-5': 'periodic',
   'journey-negatives': 'periodic',
+  'router-failure-verified-cause': 'gate',
+  'router-failure-contradicted-cause': 'gate',
+  'router-failure-triage-resolves': 'gate',
+  'router-failure-triage-unclear': 'gate',
 };
 
 /**
@@ -1890,6 +1898,10 @@ export const E2E_KINDS: Record<string, 'rule' | 'behavior' | 'judge'> = {
   'overlay-harness-claude-dedicated-tools-vs-bash-sonnet': 'rule',
   'overlay-harness-claude-dedicated-tools-vs-bash-opus-5-5': 'rule',
   'journey-negatives': 'rule',
+  'router-failure-verified-cause': 'rule',
+  'router-failure-contradicted-cause': 'rule',
+  'router-failure-triage-resolves': 'rule',
+  'router-failure-triage-unclear': 'rule',
   'review/SKILL.md workflow': 'judge',
   'setup-browser-cookies/SKILL.md workflow': 'judge',
   'browse/SKILL.md reference': 'judge',
