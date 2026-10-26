@@ -418,6 +418,20 @@ describe('gstack-skill-start behavior', () => {
     }
   }, 60_000);
 
+  test('unattended /ship alone prints the UNATTENDED_SHIP status line naming the receipt file (GSTA-88)', () => {
+    const line = /^UNATTENDED_SHIP: no push, no PR; Step 18 takes the handoff section; receipt at \.gstack\/tmp\/ship-receipt\.md$/gm;
+    const ship = runStart(['--skill', 'ship'], { GSTACK_SESSION_KIND: 'unattended' });
+    expect(ship.match(line)).toHaveLength(1);
+    expect((ship.match(/^GSTACK_INSTRUCTION_BEGIN: (\S+)/gm) ?? []).map((h) => h.replace(/^GSTACK_INSTRUCTION_BEGIN: /, ''))).toEqual(['unattended-session']);
+    expect(ship).toContain('.gstack/tmp/ship-receipt.md when nothing was pushed');
+    for (const skill of ['review', 'qa', 'autoplan']) {
+      expect(runStart(['--skill', skill], { GSTACK_SESSION_KIND: 'unattended' })).not.toContain('UNATTENDED_SHIP');
+    }
+    for (const kind of ['interactive', 'spawned', 'headless']) {
+      expect(runStart(['--skill', 'ship'], { GSTACK_SESSION_KIND: kind })).not.toContain('UNATTENDED_SHIP');
+    }
+  }, 60_000);
+
   test('unattended session makes no egress call even with telemetry and artifacts sync enabled and a queue pending (plan B1)', () => {
     // Shadow bin: every helper is the real one except the egress sinks, which
     // record their invocation. Bins resolve siblings through dirname "$0", so a
@@ -918,7 +932,7 @@ describe('gstack-skill-start install admission', () => {
     const elsewhere = verdict(gh, {}, path.join(gh, 'named.json'));
     fs.rmSync(path.join(gh, 'install-verdicts'), { recursive: true, force: true });
     expect(start(gh, 'autoplan', { ...capy, GSTACK_INSTALL_VERDICT: elsewhere }).status).toBe(0);
-  });
+  }, 20_000);
 
   test('an installed runtime root follows its .source-path to the source checkout for the verdict and HEAD', () => {
     const gh = scratch();
