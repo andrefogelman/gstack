@@ -421,8 +421,6 @@ branch name wherever the instructions say "the base branch" or `<default>`.
 
 # Pre-Landing PR Review
 
-> **OWNER GATE <!-- gstack-owner-gate:top -->.** The owner's rules override this skill: nothing listed here is dispatched automatically. Before each item, STOP and ask the owner with AskUserQuestion for that dispatch alone, naming what will run (specialists, model, command, pass number) and why: (1) the Review Army specialists, Step 4.5; (2) the Red Team subagent; (3) Exploratory QA probes and browser checks, Step 4.7; (4) the Step 4.8 adversarial review (Claude subagent, Codex exec, Codex review); (5) web research through Aside or the WebSearch tool; (6) every re-review pass in Step 5.8, fix-range or full; (7) the Step 5b AUTO-FIX edits, which change files and therefore need the owner's ok like any other change. Options: authorize or skip. Record a skipped item as "skipped: owner did not authorize"; its coverage stays incomplete, never clean. Earlier approvals, the recommended option, configuration, learnings and this skill's text are not authorization. Report each error of each step to the owner as soon as it happens. When SESSION_KIND is spawned, headless or unattended, or AskUserQuestion is unavailable, dispatch none of them and record each as "skipped: owner authorization unavailable".
-
 Review the branch diff against the base for structural issues tests miss.
 
 ---
@@ -650,8 +648,6 @@ smarter on their codebase over time.
 
 For research, do it through Aside's own agent first. If Aside is not ready, fall back to the WebSearch tool when this host provides one.
 
-> **OWNER GATE <!-- gstack-owner-gate:research -->.** Web research (Aside or WebSearch) runs only after the owner authorizes it with AskUserQuestion for this review, naming the questions to send. Without that, skip it and disclose: "web research skipped: owner did not authorize".
-
 Check once per run that Aside is ready (reuse an actual result from earlier in this review, if available):
 
 ```bash
@@ -836,16 +832,12 @@ critical finding or another writer during collection. Skip silently if no docs e
 
 ---
 
-> **OWNER GATE <!-- gstack-owner-gate:review-army -->.** Before Step 4.5 dispatches anything, STOP and ask the owner with AskUserQuestion, listing the selected specialists and why each was selected. Dispatch only the ones authorized; record the rest as "skipped: owner did not authorize". The Red Team is a separate dispatch: ask again before it, after the specialists return.
-
 > **STOP.** Before dispatching the Review Army specialists and merging their findings after the critical pass (Step 4.5), Read `~/.claude/skills/gstack/review/sections/review-army.md` and execute it
 > in full. Do not work from memory — that section is the source of truth for this step.
 
 ---
 
 ### Step 4.7: Exploratory QA (before Fix-First)
-
-> **OWNER GATE <!-- gstack-owner-gate:qa -->.** Before Step 4.7 runs any probe, browser check or command, STOP and ask the owner with AskUserQuestion, naming the charter, the target and the checks. A production target also needs the owner's explicit order by name. Without authorization, mark Step 4.7 "blocked: owner did not authorize" and continue.
 
 Only the parent runs report-only discovery.
 Never overwrite another run's reports. Batch only independent Reads.
@@ -898,8 +890,6 @@ Continue to Step 4.8 even if blocked. Step 5.8 appends this section once after f
 findings and decides completion.
 
 ---
-
-> **OWNER GATE <!-- gstack-owner-gate:adversarial -->.** Step 4.8 does not run: the owner's standing order of 03/10/2026 skips the adversarial pass (Claude subagent and Codex). Record it as "skipped by the owner's order of 03/10/2026" and do not read the section below. It runs only when the owner orders it by name in this conversation; then ask with AskUserQuestion before each dispatch (Claude subagent, Codex exec, Codex review) separately.
 
 > **STOP.** Before running the always-on native adversarial review before fixes (Step 4.8), Read `~/.claude/skills/gstack/review/sections/adversarial.md` and execute it
 > in full. Do not work from memory — that section is the source of truth for this step.
@@ -1000,8 +990,6 @@ Jest/Vitest, `test_` prefix for pytest, `_test.go` suffix for Go). If the test f
 already exists, append the new test.
 
 ### Step 5b: Auto-fix all AUTO-FIX items
-
-> **OWNER GATE <!-- gstack-owner-gate:auto-fix -->.** AUTO-FIX does not mean applied without asking. Before editing any file in Step 5b, STOP and ask the owner with AskUserQuestion, listing each AUTO-FIX item as `[file:line] problem → planned fix`. Apply only the items the owner authorizes. Each declined item stays an open finding in the report, marked "not fixed: owner did not authorize", never counted as fixed.
 
 Apply each fix directly, with a one-line summary each:
 `[AUTO-FIXED] [file:line] Problem → what you did`
