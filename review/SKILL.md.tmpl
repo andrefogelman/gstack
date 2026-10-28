@@ -376,6 +376,8 @@ Before replying to any comment, run greptile-triage.md's **Escalation Detection*
 
 ### 1. Re-review after edits
 
+> **OWNER GATE <!-- gstack-owner-gate:re-review -->.** Before every repeat below, fix-range or full, STOP and ask the owner with AskUserQuestion: cycles so far, what the last pass changed, and which pass comes next. Run it only if authorized. If the owner declines, fill and save the record with `converged:false`, report that the review did not converge because the next pass was not authorized, and STOP this invocation.
+
 1. A pass covers Steps 3–5, including all reviewers before fixes. Allow at most 3 fix cycles:
    - Edited: increment CYCLES once, then fill and save the record below with
      `converged:false`. Step 5.0 never treats this invocation's records as prior
