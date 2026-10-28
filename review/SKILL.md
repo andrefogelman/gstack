@@ -227,11 +227,11 @@ Read `~/.claude/skills/gstack/review/checklist.md`.
 
 ---
 
-## Step 2.5: Check for Greptile review comments
+## Step 2.5: Check for Pullfrog review comments
 
 Read `~/.claude/skills/gstack/review/greptile-triage.md` and follow its fetch, filter, classify and **escalation detection** steps.
 
-**No PR, a `gh` or API failure, or zero Greptile comments:** skip silently; review works without Greptile.
+**No PR, a `gh` or API failure, or zero Pullfrog comments:** skip silently; review works without Pullfrog.
 
 **Comments found:** store the classifications (VALID & ACTIONABLE, VALID BUT ALREADY FIXED, FALSE POSITIVE, SUPPRESSED) for Step 5.
 
@@ -656,7 +656,7 @@ cannot be confirmed, persist incomplete at Step 5.8 and STOP without edits.
 Terminal failure does not block fixes from independent evidence. Missing required
 output still makes the pass incomplete, even after the reader is stopped.
 
-Combine core, specialist, Step 4.7 QA, Step 4.8 adversarial and VALID & ACTIONABLE Greptile findings.
+Combine core, specialist, Step 4.7 QA, Step 4.8 adversarial and VALID & ACTIONABLE Pullfrog findings.
 For QA findings, assign confidence (1–10) from replay/code evidence using Confidence
 Calibration; retain Step 4.7's severity, not a severity inferred from confidence.
 Run Step 5.0 severity/prior-skip dedup on all
@@ -692,7 +692,7 @@ If skipped fingerprints exist, get the list of files changed since that review:
 git diff --name-only <prior-review-commit> HEAD
 ```
 
-For every combined finding, including core, specialist, exploratory QA, adversarial and valid actionable Greptile findings, check:
+For every combined finding, including core, specialist, exploratory QA, adversarial and valid actionable Pullfrog findings, check:
 - Does its fingerprint match a previously skipped finding?
 - Is the finding's file path NOT in the changed-files set?
 - Is it the same advisory/defect kind? Never use a skipped advisory to suppress a real defect, including a defect with a colliding supplied fingerprint.
@@ -798,11 +798,11 @@ Before final output, cite the line proving a safety claim, read and cite any
 handling code you rely on, and name the test file and method for coverage claims.
 Verify claims or flag them as unknown; "this looks fine" is not evidence.
 
-### Greptile comment resolution
+### Pullfrog comment resolution
 
-After outputting your own findings, if Greptile comments were classified in Step 2.5:
+After outputting your own findings, if Pullfrog comments were classified in Step 2.5:
 
-**Greptile summary in your output header:** `+ N Greptile comments (X valid, Y fixed, Z FP)`
+**Pullfrog summary in your output header:** `+ N Pullfrog comments (X valid, Y fixed, Z FP)`
 
 Before replying to any comment, run greptile-triage.md's **Escalation Detection** to choose Tier 1 (friendly) or Tier 2 (firm) reply templates.
 
@@ -815,7 +815,7 @@ Before replying to any comment, run greptile-triage.md's **Escalation Detection*
 
    For A, use the **False Positive reply template** with evidence + suggested re-rank; save to both histories. For B, return to Steps 5c–5d with an ASK proposal. Show the exact change and any `test_stub`; wait for approval before editing. Retain the comment decision so re-entry does not repeat its question.
 
-3. **VALID BUT ALREADY FIXED comments:** Reply with greptile-triage.md's **Already Fixed reply template**, no AskUserQuestion: what was done and the fixing commit SHA; save to both per-project and global greptile-history.
+3. **VALID BUT ALREADY FIXED comments:** Reply with greptile-triage.md's **Already Fixed reply template**, no AskUserQuestion: what was done and the fixing commit SHA; save to both per-project and global pullfrog-history.
 
 4. **SUPPRESSED comments:** Skip silently.
 
@@ -873,7 +873,7 @@ pass: report it with its reason.
 - Use Step 4.6's `specialists` object unchanged, including its small-diff map.
   If this host omits Review Army, use `specialists: {}` without claiming specialist coverage.
 - Build `findings` from Step 5's combined findings (core, specialist,
-  adversarial, actionable Greptile, verified exploratory QA findings) and invocation actions. Retain `fingerprint`, `severity`
+  adversarial, actionable Pullfrog, verified exploratory QA findings) and invocation actions. Retain `fingerprint`, `severity`
   (`CRITICAL|INFORMATIONAL`), `action`, and any `advisory`, `evidence_paths`,
   `helper_target`. Recheck source after fixes. The logger uses `sharedLibsFingerprint`,
   never supplied/model hashes.
@@ -953,4 +953,4 @@ If the review exits early (e.g. no diff against the base), do **not** write this
 - **Be terse.** One line problem, one line fix. No preamble.
 - **Only flag real problems.** Skip anything that's fine.
 - **Optional extractions stay advisory.** Shared-code opportunities need verified callers and useful reliability or total savings; similarity alone is not a defect. Keep actual defects independently actionable.
-- **Use Greptile reply templates from greptile-triage.md.** Every reply includes evidence. Never post vague replies.
+- **Use Pullfrog reply templates from greptile-triage.md.** Every reply includes evidence. Never post vague replies.
