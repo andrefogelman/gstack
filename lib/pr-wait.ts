@@ -24,7 +24,7 @@ import { resultCodeSuffix, resultLineWithDocs } from './result-codes';
 
 export type Until = 'green' | 'ready' | 'any-change';
 export const PR_WAIT_EXIT = { met: 0, blocked: 1, refused: 2 } as const;
-export const DEFAULT_GATING_BOTS = ['greptile', 'macroscope'];
+export const DEFAULT_GATING_BOTS = ['pullfrog', 'macroscope'];
 export const DEFAULT_ADVISORY_BOTS = ['coderabbit'];
 /** CI and deploy bots report through checks; their PR comments repeat that news. */
 const STATUS_BOTS = ['github-actions', 'vercel', 'netlify', 'railway', 'cloudflare'];
@@ -92,9 +92,9 @@ commits touch files in this PR; merge state became BEHIND or DIRTY; the PR
 merged or closed. Comment edits are never events, and top-level comments from
 CI and deploy bots are skipped because checks carry that news.
 
-Review bots: gstack-config set pr_wait_gating_bots greptile,macroscope
+Review bots: gstack-config set pr_wait_gating_bots pullfrog,macroscope
              gstack-config set pr_wait_advisory_bots coderabbit
-A bot owns the logins that start with its name (greptile-apps[bot]) and the
+A bot owns the logins that start with its name (pullfrog[bot]) and the
 checks that mention it. An advisory bot's review is reported, never waited on;
 its checks gate like any other. The value none empties a list.
 
@@ -289,7 +289,7 @@ export class Watcher {
     return code;
   }
 
-  /** The configured bot a check name mentions, or (for a login) that the login starts with: greptile-apps[bot] is greptile, notgreptile is nobody. */
+  /** The configured bot a check name mentions, or (for a login) that the login starts with: pullfrog[bot] is pullfrog, notpullfrog is nobody. */
   private botOf(text: string, login = false): string | null {
     const lowered = text.toLowerCase();
     return [...this.bots.gating, ...this.bots.advisory].find(bot => login ? lowered.startsWith(bot) : lowered.includes(bot)) ?? null;
