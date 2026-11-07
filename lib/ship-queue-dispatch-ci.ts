@@ -9,14 +9,19 @@
  * run at this head already concluded), a wait for each run, and one
  * `PREGATE_CLEARED:` per requires-remote lane whose workflow is one of them
  * and whose run concluded success. A red run clears no lane and refuses. A
- * fork head is never dispatched here (QUEUE_TRAIN_UNTRUSTED).
+ * fork head is never dispatched here (QUEUE_TRAIN_UNTRUSTED). A workflow the
+ * base has but the head predates (windows-smoke.yml on a branch cut before it
+ * landed) is skipped with a note: GitHub reads the workflow file from the
+ * branch, so the dispatch could only fail.
  */
 import * as fs from 'node:fs';
 import * as path from 'node:path';
+import { pollDelayMs } from './gh-poll';
 import type { PregateFile } from './headless-artifacts';
 import { PREGATE_OUT_REL, clearObligation, readPregateFile, writePregateFile } from './pregate/index';
 import type { QueueContext } from './ship-queue';
 import type { QueueFailure } from './ship-queue-gate';
+import { git } from './ship-queue-gate';
 import { prInfo, repoSlug, runView } from './ship-queue-train-github';
 
 const sleep = (ms: number) => new Promise(resolve => setTimeout(resolve, ms));
@@ -47,6 +52,11 @@ export async function dispatchCi(ctx: QueueContext, o: DispatchCiOptions): Promi
     const prior = atHead.find(r => r.status === 'completed');
     if (prior) { lines.push(`CI_DISPATCH: ${wf} not dispatched (run ${prior.databaseId} already concluded ${prior.conclusion ?? 'unknown'} at this head)`); concluded.set(wf, prior); continue; }
     const live = atHead[0];
+    const wfPath = `.github/workflows/${wf}`;
+    if (!live && git(ctx.repoRoot, ['cat-file', '-e', `${head}^{commit}`]).ok && git(ctx.repoRoot, ['cat-file', '-e', `${ctx.remote ?? 'origin'}/${ctx.base}:${wfPath}`]).ok && !git(ctx.repoRoot, ['cat-file', '-e', `${head}:${wfPath}`]).ok) {
+      lines.push(`CI_DISPATCH: ${wf} not dispatched (${wfPath} is on ${ctx.base} but not in ${head.slice(0, 12)}; the branch predates it, so its pull_request run comes with the stamp commit)`);
+      continue;
+    }
     if (!live) {
       const d = ctx.gh(['workflow', 'run', wf, '--ref', branch]);
       if (!d.ok) return { lines, failure: { code: 'QUEUE_NOT_READY', message: `gh workflow run ${wf} --ref ${branch} failed (${(d.err ?? d.out).trim().replace(/\s+/g, ' ').slice(0, 120) || 'no output'})` } };
@@ -56,7 +66,7 @@ export async function dispatchCi(ctx: QueueContext, o: DispatchCiOptions): Promi
       run = run && slug ? runView(ctx, slug, run.databaseId) ?? run : runsAt(ctx, wf, branch, head)[0];
       if (run?.status === 'completed') break;
       if (Date.now() >= deadline) return { lines: [...lines, `CI_DISPATCH: ${wf} --ref ${branch} ${run ? `run ${run.databaseId} ${run.url} ${run.status}` : 'no run appeared'}`], failure: { code: 'QUEUE_TRAIN_PENDING', message: `${wf} ${run ? `run ${run.databaseId} is still ${run.status}` : 'has no workflow_dispatch run at this head yet'} at the --dispatch-ci timeout; rerun ready --dispatch-ci to continue waiting` } };
-      await sleep(o.pollMs);
+      await sleep(pollDelayMs(o.pollMs));
     }
     lines.push(`CI_DISPATCH: ${wf} --ref ${branch} run ${run.databaseId} ${run.url} ${run.conclusion ?? 'unknown'}`);
     concluded.set(wf, run);

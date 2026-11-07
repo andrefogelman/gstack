@@ -85,7 +85,7 @@ $D compare --images-file "$_DESIGN_DIR/board-images.json" --output "$_DESIGN_DIR
 
 This publishes the board to the design daemon, opens it in the user's default
 browser, and exits; it does not wait for feedback. Read captured stderr for the
-`BOARD_URL: http://127.0.0.1:N/boards/<id>/` line, then wait with AskUserQuestion:
+`BOARD_URL: http://127.0.0.1:N/<secret>/boards/<id>/` line, then wait with AskUserQuestion:
 "Review <BOARD_URL>, click Submit or Regenerate, then tell me (or paste your
 preferences here)." After the answer, read `feedback.json` or
 `feedback-pending.json` next to the board HTML.
@@ -100,7 +100,7 @@ If the JSON contains `"regenerated": true`:
 2. Generate new variants with `$D iterate` or `$D variants` using the updated brief, rewritten into the brief file (capture and round accounting as in Step 3)
 3. Rebuild the board with Step 4's board block, without `--serve`
 4. POST the new HTML to the running board. Parse the board URL from stderr
-   (`BOARD_URL: http://127.0.0.1:N/boards/<id>/` — the daemon path) or fall
+   (`BOARD_URL: http://127.0.0.1:N/<secret>/boards/<id>/` — the daemon path) or fall
    back to the legacy port (`SERVE_STARTED: port=N` — only emitted under
    `--no-daemon`, hits `/api/reload` root). Daemon path:
    `jq -nc --arg html "$_DESIGN_DIR/design-board.html" '{html: $html}' | curl -sS -X POST "${BOARD_URL}api/reload" -H 'Content-Type: application/json' --data-binary @-`
@@ -187,11 +187,10 @@ Show the screenshot to the user. Ask: "Does this feel right? Want to iterate on 
 If they want changes, regenerate the HTML with their feedback and re-render.
 If they approve or say "good enough," proceed.
 
-**Step 5: Include in design doc**
+**Step 5: Save the sketch**
 
-Reference the wireframe screenshot in the design doc's "Recommended Approach" section.
-The screenshot file at `<sketch-dir>/sketch.png` (name the full path in the doc) can be referenced by downstream skills
-(`/plan-design-review`, `/design-review`) to see what was originally envisioned.
+Copy the temporary `sketch.png` and `sketch.html` to `<PROJECT_DIR>/{user}-{branch}-sketch-{datetime}.*`.
+In "Recommended Approach" add `Wireframe: projects/<slug>/<png name>` (state-root relative), or `Wireframe: none (<reason>)`.
 
 **Step 6: Outside design voices** (optional)
 

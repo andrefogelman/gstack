@@ -2,7 +2,7 @@
 name: review
 preamble-tier: 4
 version: 1.0.0
-description: Pre-landing PR review. (gstack)
+description: Use when you review this PR's diff. (gstack)
 allowed-tools:
   - Bash
   - Read
@@ -15,12 +15,38 @@ allowed-tools:
   - WebSearch
 triggers:
   - review this pr
+  - look over my diff
   - code review
   - check my diff
+  - review my changes
   - pre-landing review
+contract:
+  version: 1
+  items:
+    - id: specialists-dispatched
+      kind: selected_specialists_dispatched
+      marker: "Dispatching N specialists:"
+    - id: adversarial-pass
+      kind: agent_dispatch
+      match: Think like an attacker and a chaos engineer
+    - id: review-report
+      kind: report_labels
+      heading: Pre-Landing Review
+      labels:
+        - Gate edits
 ---
 <!-- AUTO-GENERATED from SKILL.md.tmpl — do not edit directly -->
 <!-- Regenerate: bun run gen:skill-docs -->
+
+## Done means
+
+Finish only when each of these exists (contract v1):
+
+- `specialists-dispatched`: the specialist selection printed (`Dispatching N specialists:` ...), then one Agent dispatch per specialist it names (none when a small diff skips them).
+- `adversarial-pass`: an Agent dispatch for the adversarial pass, its prompt including "Think like an attacker and a chaos engineer".
+- `review-report`: a `Pre-Landing Review` with Gate edits filled in (`none: <why>` where the skill's own stop rule leaves one empty).
+
+`~/.claude/skills/gstack/bin/gstack-skill-contract check` reads them from the transcript (docs/skill-routing-and-contracts.md). For an item that truly does not apply, run `~/.claude/skills/gstack/bin/gstack-skill-contract waive <item> --reason "<why>"` (this session only; it counts as a miss).
 
 ## Shared preamble (load first)
 
@@ -57,9 +83,9 @@ If `SKILL_PREFIX` is `true` use `/gstack-*` names; paths stay `~/.claude/skills/
 
 ## Question Tuning (skip entirely if `QUESTION_TUNING: false`)
 
-Before each decision brief (AskUserQuestion or Conductor/fallback prose), choose `question_id` from `~/.claude/skills/gstack/scripts/question-registry.ts` or `{skill}-{slug}`, then run `~/.claude/skills/gstack/bin/gstack-question-preference --check "<id>"`; for an unregistered id, write the question summary to `.gstack/tmp/qt.txt` (file-write tool) and append `--summary-file .gstack/tmp/qt.txt` (one-way keyword check). `AUTO_DECIDE` means choose the recommended option and say "Auto-decided [summary] → [option] (your preference). Change with /plan-tune." `ASK_NORMALLY` means ask.
+Before each decision brief (AskUserQuestion or Conductor/fallback prose), choose `question_id` from `~/.claude/skills/gstack/scripts/question-registry.ts` or `{skill}-{slug}`, then run `~/.claude/skills/gstack/bin/gstack-question-preference --check "<id>"`; for an unregistered id, write the question summary to `.gstack/tmp/qt.txt` (file-write tool) and append `--summary-file .gstack/tmp/qt.txt` (one-way keyword check); its `--signal-keys` prints an optional signal-key hint. `AUTO_DECIDE` means choose the recommended option and say "Auto-decided [summary] → [option] (your preference). Change with /plan-tune." `ASK_NORMALLY` means ask.
 
-**Embed the question_id as a marker in every asked brief**, ad hoc IDs included, with one ID for check, marker and log. Include `<gstack-qid:{question_id}>` once in the question text itself, not only a command or log. On prose paths, use the explicit reply line. Without the marker, the PreToolUse hook treats AskUserQuestion as observed-only and never auto-decides.
+**Embed the question_id as a marker in every asked brief**, ad hoc IDs included, with one ID for check, marker and log. Include `<gstack-qid:{question_id}>` once in the question text itself, not only a command or log. On prose paths, use the explicit reply line. Without the marker the hook never auto-decides.
 
 **Embed the option recommendation via the `(recommended)` label suffix** on exactly one option per AUQ. The PreToolUse hook parses it first, falls back to "Recommendation: X" prose, and refuses when ambiguous (two labels = refuse).
 
@@ -227,11 +253,11 @@ Read `~/.claude/skills/gstack/review/checklist.md`.
 
 ---
 
-## Step 2.5: Check for Pullfrog review comments
+## Step 2.5: Check for review bot comments
 
 Read `~/.claude/skills/gstack/review/greptile-triage.md` and follow its fetch, filter, classify and **escalation detection** steps.
 
-**No PR, a `gh` or API failure, or zero Pullfrog comments:** skip silently; review works without Pullfrog.
+**A skip, an error or zero comments:** continue (name an error's reason); review works without bots.
 
 **Comments found:** store the classifications (VALID & ACTIONABLE, VALID BUT ALREADY FIXED, FALSE POSITIVE, SUPPRESSED) for Step 5.
 
@@ -570,7 +596,7 @@ Example:
 `[CRITICAL] (confidence: 9/10) user.rb:42 — SQL injection via string interpolation`
 
 **Calibration learning:** If the user confirms a reported finding scored < 7 is
-real, log the corrected pattern as a learning.
+real, log it per Operational Self-Improvement.
 
 ### TODOS cross-reference
 
@@ -650,13 +676,13 @@ findings and decides completion.
 
 ## Step 5: Fix-First Review
 
-Before edits, confirm every dispatched reader has returned or is confirmed stopped.
-For an active or unknown reader/writer, wait or confirm it is stopped; if that
-cannot be confirmed, persist incomplete at Step 5.8 and STOP without edits.
+Before edits, every dispatched reader/writer must have returned or be confirmed
+stopped: wait, and if that cannot be confirmed, persist incomplete at Step 5.8 and
+STOP without edits.
 Terminal failure does not block fixes from independent evidence. Missing required
 output still makes the pass incomplete, even after the reader is stopped.
 
-Combine core, specialist, Step 4.7 QA, Step 4.8 adversarial and VALID & ACTIONABLE Pullfrog findings.
+Combine core, specialist, Step 4.7 QA, Step 4.8 adversarial and VALID & ACTIONABLE review bot findings.
 For QA findings, assign confidence (1–10) from replay/code evidence using Confidence
 Calibration; retain Step 4.7's severity, not a severity inferred from confidence.
 Run Step 5.0 severity/prior-skip dedup on all
@@ -692,7 +718,7 @@ If skipped fingerprints exist, get the list of files changed since that review:
 git diff --name-only <prior-review-commit> HEAD
 ```
 
-For every combined finding, including core, specialist, exploratory QA, adversarial and valid actionable Pullfrog findings, check:
+For every combined finding, including core, specialist, exploratory QA, adversarial and valid actionable Greptile findings, check:
 - Does its fingerprint match a previously skipped finding?
 - Is the finding's file path NOT in the changed-files set?
 - Is it the same advisory/defect kind? Never use a skipped advisory to suppress a real defect, including a defect with a colliding supplied fingerprint.
@@ -798,24 +824,24 @@ Before final output, cite the line proving a safety claim, read and cite any
 handling code you rely on, and name the test file and method for coverage claims.
 Verify claims or flag them as unknown; "this looks fine" is not evidence.
 
-### Pullfrog comment resolution
+### Review bot comment resolution
 
-After outputting your own findings, if Pullfrog comments were classified in Step 2.5:
+After outputting your own findings, if bot comments were classified in Step 2.5:
 
-**Pullfrog summary in your output header:** `+ N Pullfrog comments (X valid, Y fixed, Z FP)`
+Use greptile-triage.md's Output Format summary in your header and its History File Writes for each record.
 
-Before replying to any comment, run greptile-triage.md's **Escalation Detection** to choose Tier 1 (friendly) or Tier 2 (firm) reply templates.
+Before replying, run greptile-triage.md's **Escalation Detection** to pick Tier 1 or Tier 2 templates.
 
-1. **VALID & ACTIONABLE comments:** Use their Step 5a–5d disposition; do not ask a second fix question. Step 5c alone supplies A) Fix / B) Skip for ASK items. After a completed fix, use the **Fix reply template** with diff and explanation; cite the current diff if uncommitted, never invent a commit SHA. A Skip leaves the defect unresolved and grants no new fix permission. If evidence disproves the finding, reclassify it below.
+1. **VALID & ACTIONABLE comments:** Use their Step 5a–5d disposition; do not ask a second fix question. After a completed fix, use the **Fix reply template** with diff and explanation; cite the current diff if uncommitted, never invent a commit SHA. A Skip leaves the defect unresolved and grants no new fix permission. If evidence disproves the finding, reclassify it below.
 
 2. **FALSE POSITIVE comments:** These are reply decisions, not code approval. Show file:line (or [top-level]), summary, permalink and evidence, then ask:
    - A) Reply explaining why this is incorrect (recommended if clearly wrong)
    - B) Propose a code change
    - C) Ignore — don't reply, don't fix
 
-   For A, use the **False Positive reply template** with evidence + suggested re-rank; save to both histories. For B, return to Steps 5c–5d with an ASK proposal. Show the exact change and any `test_stub`; wait for approval before editing. Retain the comment decision so re-entry does not repeat its question.
+   For A, use the **False Positive reply template** with evidence; record it (type: fp). For B, return to Steps 5c–5d with an ASK proposal. Show the exact change and any `test_stub`; wait for approval before editing. Retain the comment decision so re-entry does not repeat its question.
 
-3. **VALID BUT ALREADY FIXED comments:** Reply with greptile-triage.md's **Already Fixed reply template**, no AskUserQuestion: what was done and the fixing commit SHA; save to both per-project and global pullfrog-history.
+3. **VALID BUT ALREADY FIXED comments:** Reply with greptile-triage.md's **Already Fixed reply template**, no AskUserQuestion: what was done and the fixing commit SHA; record it (type: already-fixed).
 
 4. **SUPPRESSED comments:** Skip silently.
 
@@ -824,8 +850,6 @@ Before replying to any comment, run greptile-triage.md's **Escalation Detection*
 ## Step 5.8: Persist Eng Review result
 
 ### 1. Re-review after edits
-
-> **OWNER GATE <!-- gstack-owner-gate:re-review -->.** Before every repeat below, fix-range or full, STOP and ask the owner with AskUserQuestion: cycles so far, what the last pass changed, and which pass comes next. Run it only if authorized. If the owner declines, fill and save the record with `converged:false`, report that the review did not converge because the next pass was not authorized, and STOP this invocation.
 
 1. A pass covers Steps 3–5, including all reviewers before fixes. Allow at most 3 fix cycles:
    - Edited: increment CYCLES once, then fill and save the record below with
@@ -837,6 +861,9 @@ Before replying to any comment, run greptile-triage.md's **Escalation Detection*
      final: repeat Steps 3–5 with a full start.
 2. On a repeat, execute Steps 3–5 in order. At Step 4.7, an edited pass supersedes
    every earlier QA capture (exploratory §4): rerun each probe the verdict relies on.
+   These reruns are revalidation, so they run even after smoke expiry; keep the
+   PROBE_DIR. Earlier provisional sections link checkpoints; only the final pass
+   runs its once-only `materialize`.
    A zero-edit pass reuses only this invocation's unchanged-input QA evidence,
    rerunning any probe whose inputs changed or are uncertain. Reusing never skips a review step.
 3. **Verify completed actions.** On the final zero-edit pass, reconcile this
@@ -848,9 +875,8 @@ Before replying to any comment, run greptile-triage.md's **Escalation Detection*
    defects and unresolved counts; earlier fixes do not suppress them.
 4. **Recheck skipped advice.** Re-read its final-snapshot supporting source and
    reconfirm the decision; otherwise report its history without a reusable skip.
-   The logger computes `snapshot_covered_paths` from eligible paths whose raw bytes
-   equal the bound snapshot blobs (`[]` if none). Never carry prior-cycle, supplied
-   or prior-record coverage forward or build this proof yourself. Fixed advice
+   The logger computes `snapshot_covered_paths` itself; never carry prior-cycle,
+   supplied or prior-record coverage forward or build this proof yourself. Fixed advice
    needs no skip coverage.
 
 ### 2. Fill the record
@@ -875,19 +901,19 @@ pass: report it with its reason.
 - Use Step 4.6's `specialists` object unchanged, including its small-diff map.
   If this host omits Review Army, use `specialists: {}` without claiming specialist coverage.
 - Build `findings` from Step 5's combined findings (core, specialist,
-  adversarial, actionable Pullfrog, verified exploratory QA findings) and invocation actions. Retain `fingerprint`, `severity`
+  adversarial, actionable review bot, verified exploratory QA findings) and invocation actions. Retain `fingerprint`, `severity`
   (`CRITICAL|INFORMATIONAL`), `action`, and any `advisory`, `evidence_paths`,
   `helper_target`. Recheck source after fixes. The logger uses `sharedLibsFingerprint`,
   never supplied/model hashes.
   Actions: `auto-fixed` (Step 5b), `fixed` (approved **and completed** in Step 5d),
-  `skipped` (explicit Skip in Step 5c). Advice is never `auto-fixed`; pending
+  `skipped` (explicit Skip in Step 5c),
+  `open` (any other defect, e.g. unanswered). Advice is never `auto-fixed`; pending
   advice stays in the response, not the record. Exclude prior Step 5.0
   suppressions; include this invocation's revalidated decisions.
 - Gate findings additionally carry `gate` (the RH tag, e.g. `"RH-15"`), `gate_id`
   (the tool's hunk identity), `reason` (for `kept`) and one of the actions
   `kept`, `restored` or `open`. Never store hunk text, test names or commit
-  messages in the record (it is brain-synced). `open` findings count in
-  `issues_found` and in `critical`/`informational` by severity. The logger stamps
+  messages in the record (it is brain-synced). The logger stamps
   `actor` from `gstack-session-kind` itself and discards any `actor` you supply;
   for a non-interactive session it also forces `action: "open"` on every gate
   finding. Dispositions are per invocation: `/ship`'s own review pass asks again.
@@ -899,8 +925,8 @@ pass: report it with its reason.
 `TIMESTAMP` is ISO 8601; `COMMIT` is `git rev-parse --short HEAD`.
 `quality_score` is Step 4.6's specialist score (`10.0` when small-diff specialists
 were skipped or this host omits Review Army). This default is not completion evidence;
-unresolved non-advisory core defects still count in `issues_found`,
-`critical`, `informational`. The logger builds trusted `review_binding` from the
+unresolved defects, `open` ones included, still count in `issues_found` and
+by severity in `critical`/`informational`. The logger builds trusted `review_binding` from the
 validated captured branch digest, discarding caller bindings. Never invent a binding
 or replace REVIEW_START at log time; finish only this pass's own token.
 
@@ -955,4 +981,4 @@ If the review exits early (e.g. no diff against the base), do **not** write this
 - **Be terse.** One line problem, one line fix. No preamble.
 - **Only flag real problems.** Skip anything that's fine.
 - **Optional extractions stay advisory.** Shared-code opportunities need verified callers and useful reliability or total savings; similarity alone is not a defect. Keep actual defects independently actionable.
-- **Use Pullfrog reply templates from greptile-triage.md.** Every reply includes evidence. Never post vague replies.
+- **Use the reply templates from greptile-triage.md.** Every reply includes evidence. Never post vague replies.

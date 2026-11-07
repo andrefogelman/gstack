@@ -8,7 +8,7 @@ import * as fs from 'node:fs';
 import * as os from 'node:os';
 import * as path from 'node:path';
 import { spawnSync } from 'node:child_process';
-import { classifyOutsideReview, validateOutsideReview, type OutsideGate } from '../lib/outside-review-result';
+import { classifyOutsideReview, usageFromEvents, validateOutsideReview, type OutsideGate } from '../lib/outside-review-result';
 import { gateOutcomeLine, type GateReason } from '../lib/gate-outcomes';
 
 const ROOT = path.resolve(import.meta.dir, '..');
@@ -28,8 +28,67 @@ function cli(args: string[]) {
 }
 
 // A clean review states that it found nothing; an untagged finding is unverified (DX-11).
-const RECOMMEND = 'No issues found in changed.ts.\nRecommendation: approve because changed.ts keeps its data.';
+const RECOMMEND = 'No issues found in this change.\nRecommendation: approve because changed.ts keeps its data.';
 const UNTAGGED = 'Recommendation: fix the guard because changed.ts loses data.';
+
+// A model may write the completion recommendation as a Markdown section instead of an inline line (#3980).
+describe('a ## Recommendation heading carries the completion recommendation (#3980)', () => {
+  const review = (tail: string, head = 'Severity: Low. A future caller may need a guard.') =>
+    classifyOutsideReview({ text: `${head}\n\n${tail}`, gate: 'review' });
+
+  test('an advisory review with a heading is clean and keeps its severity', () => {
+    const result = review('## Recommendation\n\nShip as-is because current callers already enforce the invariant.');
+    expect(result.verdict).toBe('clean');
+    expect(result.findings.highest).toBe('P3');
+    expect(review('## Recommendation\n\n**Ship as-is** because current callers already enforce the invariant.').verdict).toBe('clean');
+  });
+
+  test('a blocker under the heading still blocks', () => {
+    const result = review('## Recommendation\n\nFix the write because it loses data.', 'Severity: High. The write drops rows.');
+    expect(result.verdict).toBe('findings');
+    expect(result.findings.highest).toBe('P1');
+  });
+
+  test('a label or verdict on the line under the heading still blocks, with or without an inline line', () => {
+    for (const [under, highest] of [['P1: Fix the race because it loses data.', 'P1'], ['Critical: the migration drops rows because it skips the copy.', 'P0'],
+      ['Verdict: not ready', 'P2']] as const) {
+      for (const inline of ['', '\n\nRecommendation: fix it because it loses data.']) {
+        const result = classifyOutsideReview({ text: `[P2] nit\n\n## Recommendation\n\n${under}${inline}`, gate: 'review' });
+        expect(result.findings.highest).toBe(highest);
+        expect(result.verdict).toBe(inline || highest !== 'P2' ? 'findings' : 'unavailable');
+      }
+    }
+  });
+
+  test('a no-findings rationale under the heading concludes the review', () => {
+    const result = classifyOutsideReview({ text: '### Recommendation:\nApprove because no issues were found.', gate: 'proposal' });
+    expect(result.verdict).toBe('clean');
+    expect(classifyOutsideReview({ text: '## Recommendation\n\nApprove because I found no issues.', gate: 'review' }).verdict).toBe('clean');
+  });
+
+  test('a heading over a no-findings line with no because-clause reads as it did before the heading fold', () => {
+    for (const text of ['## Recommendation\n\nNo issues found.', 'Reviewed the diff.\n\n## Recommendation\n\nNo issues found in the change.']) {
+      expect(classifyOutsideReview({ text, gate: 'structured' }).verdict).toBe('clean');
+      expect(classifyOutsideReview({ text, gate: 'review' }).reason).toBe('missing_markers');
+    }
+  });
+
+  test('the inline form still works', () => {
+    const result = review('Recommendation: Ship as-is because current callers already enforce the invariant.');
+    expect(result.verdict).toBe('clean');
+    expect(result.findings.highest).toBe('P3');
+  });
+
+  test('a reply with no recommendation, an empty section, no rationale or a fenced example is still missing', () => {
+    for (const tail of ['No recommendation here.', '## Recommendation', '## Recommendation\n\nShip as-is.',
+      '## Recommendation\n\n- Ship as-is because callers enforce it.',
+      '```text\n## Recommendation\n\nShip as-is because this is an example.\n```']) {
+      const result = review(tail);
+      expect(result.verdict).toBe('unavailable');
+      expect(result.reason).toBe('missing_markers');
+    }
+  });
+});
 
 describe('classifyOutsideReview: separate execution, findings and verdict', () => {
   const cases: Array<[string, { text: string; gate: OutsideGate; stderr?: string; exit?: number }, string, string | null, string | undefined]> = [
@@ -81,7 +140,7 @@ describe('a no-findings statement counts only as the reply\'s conclusion (#3294)
     for (const text of ['No regressions found.', 'I did not find any defects.', 'There are no actionable regressions.',
       'NO_FINDINGS', '**NO_FINDINGS**', '`NO_FINDINGS`', '- NO_FINDINGS',
       `The change adds a retry cap and its tests.\n${REPORTER}`, 'Reviewed the retry helper.\n\nNo issues found in this change.',
-      'After reviewing the patch, I found no issues.', 'I found no issues in this read-only change.',
+      'After reviewing the patch, I found no issues.', 'I found no issues in this read-only change.', 'No issues found while reviewing the diff.',
       'Summary of the retry helper\nNo issues found.', 'I found no actionable regressions in the staged\nchanges.',
       // Clean `codex review --uncommitted` replies captured from codex-cli 0.160.0 with gpt-6-sol.
       'The change validates the retry limit before execution. No actionable regression was found.',
@@ -123,6 +182,170 @@ describe('a no-findings statement counts only as the reply\'s conclusion (#3294)
     expect(verdict(`${FINDING}\nRecommendation: ship because no regressions in the existing tests.`)).toBe('unverified');
     expect(verdict(`${FINDING}\nRecommendation: ship because no issues remain, but the fallback needs a follow-up.`)).toBe('unverified');
     expect(verdict('Recommendation: address the migration because no regressions were found in the parser change,\nbut the migration drops users_email_idx.')).toBe('unverified');
+  });
+});
+
+// #3469: a clean Codex review often signs off with one sentence about the checks
+// it ran. That sentence follows the no-findings conclusion; it never replaces it.
+describe('a closing check-results sentence keeps the no-findings conclusion (#3469)', () => {
+  // The two clean tails quoted in #3469 (codex review --base main, codex-cli 0.163.0-alpha, gpt-6-luna).
+  const TAILS = [
+    'No actionable regressions were identified in the diff. Tests, lint, and build all pass.',
+    'The changes introduce no definite, actionable regressions. Tests, lint, and build all pass.',
+  ];
+  const FINDING = 'The fallback path now swallows ENOENT and returns an empty config.';
+  const unverified = (text: string) => {
+    const r = classifyOutsideReview({ text, gate: 'structured' });
+    expect({ text, verdict: r.verdict, reason: r.reason }).toEqual({ text, verdict: 'unverified', reason: 'untagged_review' });
+  };
+
+  test("the reporter's clean tails read clean in-process and through the CLI /ship calls", () => {
+    for (const text of TAILS) {
+      expect({ text, verdict: classifyOutsideReview({ text, gate: 'structured' }).verdict }).toEqual({ text, verdict: 'clean' });
+      const r = cli(['--label', 'Codex structured review', '--exit', '0', '--stderr', file(''), 'structured', file(`${text}\n`)]);
+      expect([r.status, r.stdout]).toEqual([0, 'VERDICT: clean\nFINDINGS: none\n']);
+    }
+  });
+
+  test('other check-results sign-offs, one or several, on one line or after a blank line', () => {
+    for (const text of ['No issues found. Typecheck passes.', 'No regressions found in this change. The tests pass.\nLint passes.',
+      'I found no issues. Tests and build succeeded.', 'This patch introduces no regressions. All tests pass.',
+      'The change validates the retry limit.\nNo actionable regressions were identified in the diff; tests, lint, and build all pass.',
+      `The change adds a retry cap.\n\n${TAILS[0]}`, 'No issues found.\r\n\r\nTests, lint, and build all pass.\r\n']) {
+      expect({ text, verdict: classifyOutsideReview({ text, gate: 'structured' }).verdict }).toEqual({ text, verdict: 'clean' });
+    }
+  });
+
+  test('findings followed by a check-results sentence are never clean', () => {
+    for (const text of [`[P1] data loss\n${TAILS[0]}`, `P0: corrupts every row\n${TAILS[1]}`, `Severity: High. ${FINDING}\n${TAILS[0]}`]) {
+      expect({ text, verdict: classifyOutsideReview({ text, gate: 'structured' }).verdict }).toEqual({ text, verdict: 'findings' });
+    }
+    for (const text of [`${FINDING} Tests, lint, and build all pass.`, `No issues found. ${FINDING} Tests pass.`,
+      'No issues found. Tests pass. The fallback path now swallows ENOENT.',
+      'No regressions found. Tests pass, but the fallback path now swallows ENOENT.',
+      'No issues found, except that the fallback path now swallows ENOENT. Lint passes.',
+      `${FINDING}\nNo issues in the parser. Tests pass.`,
+      `${FINDING} The changes to the parser introduce no regressions. Tests pass.`,
+      'The changes introduce no regressions in parsing, while missing configuration now silently disables authentication.',
+      'No issues in the parser, while missing configuration now silently disables authentication. Tests pass.',
+      'The changes introduce no regressions in the diff, while missing configuration now silently disables authentication.',
+      'No issues in the parser, while the change silently disables authentication. Tests pass.',
+      'I reviewed the parser.\nNo issues in the diff, and the fallback path now swallows ENOENT in this change.',
+      'I reviewed the parser.\nNo issues in the parser whereas this change drops the cache.',
+      'The changes introduce no regressions in the diff, the fallback path now swallows ENOENT.',
+      'I reviewed the parser.\nNo issues in the diff and the fallback path now swallows ENOENT.',
+      'I reviewed the parser.\nNo issues in the diff \u2014 the fallback path now swallows ENOENT.',
+      'I reviewed the parser.\nNo issues in the diff (the fallback path now swallows ENOENT).',
+      'I reviewed the parser.\nNo issues in this change so callers now lose data.',
+      'I reviewed the parser.\nNo issues in the diff -- the fallback path now swallows ENOENT.',
+      'I reviewed the parser.\nNo issues in the diff [the fallback path now swallows ENOENT].',
+      'I reviewed the parser.\nNo issues in the diff / the fallback path now swallows ENOENT.',
+      'I reviewed the parser.\nNo issues in the diff \u2012 the fallback path now swallows ENOENT.',
+      'I reviewed the parser.\nNo issues in the diff plus the fallback path now swallows ENOENT.',
+      'I reviewed the parser.\nNo issues in the diff despite the fallback path now swallowing ENOENT.']) unverified(text);
+  });
+
+  test('a truncated, empty or check-only reply is never clean', () => {
+    for (const text of ['No actionable regressions were identified in the diff. Tests, lint, and b',
+      'No actionable regressions were identified in the diff. Tests, lint, and build all pass',
+      'No issues found. Tests', 'Tests, lint, and build all pass.', 'No regressions found. Tests fail.']) unverified(text);
+    const empty = classifyOutsideReview({ text: ' \n', gate: 'structured' });
+    expect([empty.verdict, empty.reason]).toEqual(['unavailable', 'empty_response']);
+  });
+
+  test('a check sentence that quotes code, continues a wrapped line or follows a condition is not a sign-off', () => {
+    for (const text of ['No issues found. Tests `do not` pass.', 'No issues found. `Not all` tests pass.',
+      'No issues found. Tests pass `only if the regression is skipped`.', 'No issues found. `Not all`\ntests pass.',
+      '```\ntests pass.\n```\nNo issues found.\n`Not all` tests pass.', 'No issues found in this patch, provided that:\nTests pass.',
+      'No issues found. Not all tests pass.', 'No issues found. Some tests pass.']) unverified(text);
+  });
+});
+
+// GST-1808: the no-findings conclusion is one closed sentence: an optional lead
+// ("Overall," or "After reviewing the patch,"), the statement, an optional predicate
+// ("were found") and an optional scope naming the whole change, then at most one
+// "." "!" or ";". Anything after that, a question, or a scope naming only part of
+// the change leaves the review unverified, as the reply's only sentence, its last
+// sentence or its Recommendation because-clause alike.
+describe('the no-findings conclusion is a closed sentence (GST-1808)', () => {
+  const FINDING = 'the fallback path now swallows ENOENT.';
+  const verdictOf = (text: string, gate: OutsideGate) => {
+    const r = classifyOutsideReview({ text, gate });
+    return { text, gate, verdict: r.verdict, reason: r.reason };
+  };
+  const unverified = (text: string, gate: OutsideGate = 'structured') =>
+    expect(verdictOf(text, gate)).toEqual({ text, gate, verdict: 'unverified', reason: 'untagged_review' });
+  const clean = (text: string, gate: OutsideGate = 'structured') =>
+    expect(verdictOf(text, gate)).toEqual({ text, gate, verdict: 'clean', reason: undefined });
+
+  test('a Recommendation-only reply is held to the same rule as any other conclusion', () => {
+    for (const text of ['Recommendation: Ship because no issues in the diff, so the change disables auth.',
+      'Recommendation: ship because no issues, so the change disables auth.',
+      'Recommendation: ship because I found no regressions in this change, which now disables auth.',
+      'Recommendation: ship because no issues in the diff\nso the change disables auth.']) unverified(text, 'review');
+  });
+
+  test('an exception after the statement or its whole-change scope is not a conclusion', () => {
+    for (const tail of ['with the exception of the auth change', 'outside of the auth path', 'save for the auth change',
+      'after the change removed the auth check', 'bar the auth path', 'excepting the auth path']) {
+      for (const text of [`No issues in the diff ${tail}.`, `I reviewed the parser.\nNo issues in the diff ${tail}.`,
+        `No issues found ${tail}.`, `I reviewed the parser.\nNo actionable regressions were found in this change ${tail}.`]) unverified(text);
+    }
+  });
+
+  test('a question is not a conclusion', () => {
+    for (const text of ['Prose here. No issues in the diff?', 'No issues in the diff?', 'No issues?', 'NO_FINDINGS?',
+      'I reviewed the parser.\nNo issues in the diff?!', 'I reviewed the parser.\nNo issues found in this change?\nTests pass.']) unverified(text);
+    unverified('Recommendation: ship because no issues remain?', 'review');
+  });
+
+  test('a joiner after the scope starts a clause the conclusion does not cover, with or without a sign-off (fc3#1)', () => {
+    for (const joiner of [': ', ' & ', ' + ', ' -> ', ' \u2192 ', ' | ', '\u2026 ', '/', ' ~ ', ' \u2010 ', ' \u2212 ', '- ', ' with ', ' now ', '. so ']) {
+      for (const signoff of ['', ' Tests pass.']) unverified(`I reviewed the parser.\nNo issues in the diff${joiner}${FINDING}${signoff}`);
+    }
+    for (const text of [`No issues found: ${FINDING}`, `I reviewed the parser.\nNo issues found: ${FINDING}`, `NO_FINDINGS: ${FINDING}`]) unverified(text);
+  });
+
+  test('a scope that names only part of the change does not conclude, even as the only sentence', () => {
+    for (const text of ['No issues in the parser.', 'I found no issues in the retry helper.', 'After reviewing the parser, I found no issues.',
+      'I reviewed the parser.\nNo issues in the auth module of this change.', 'No issues in the diff against the auth module.',
+      // Former fixtures that read clean only through the lax scope and colon rules (RECOMMEND, GST-436's NO_ISSUES, prose-negative.txt,
+      // codex-3105/p1-in-code.txt and codex-3105/no-findings.txt).
+      'No issues found in changed.ts.\nRecommendation: approve because changed.ts keeps its data.', 'No issues found in the changed helpers.',
+      'Reviewed the parser.\n\nNo issues found in the changed parser.',
+      'I read the diff and checked every caller.\nNo findings: the cap is enforced and the tests cover the boundary.']) unverified(text, text.includes('Recommendation:') ? 'review' : 'structured');
+  });
+
+  test('real clean conclusions stay clean (negative controls)', () => {
+    for (const text of [
+      // #3469's two clean tails (codex review --base main, codex-cli 0.163.0-alpha, gpt-6-luna), with and without their sign-off.
+      'No actionable regressions were identified in the diff. Tests, lint, and build all pass.',
+      'The changes introduce no definite, actionable regressions. Tests, lint, and build all pass.',
+      'No actionable regressions were identified in the diff.', 'The changes introduce no definite, actionable regressions.',
+      // #3294's reply and the codex-cli 0.160.0 captures.
+      'I found no actionable regressions in the staged, unstaged, or untracked changes.',
+      'The change validates the retry limit before execution. No actionable regression was found.',
+      'The change validates `max` before retrying. No affected callers or tests are present in the repository, and no actionable regression is evident.',
+      'NO_FINDINGS', '**NO_FINDINGS**', 'No issues found.', 'No issues found!', 'There are no actionable regressions.', 'I did not find any defects.',
+      'Overall, no issues found.', 'After reviewing the patch, I found no issues.', 'Having reviewed the diff, I found no issues.',
+      'No issues found while reviewing the diff.', 'I found no issues in this read-only change.', 'No issues to report in this PR.',
+      'Reviewed the retry helper.\n\nNo issues found in this change.', 'No regressions were found in the change as a whole.',
+      'No issues found across the committed and uncommitted changes.', 'No issues found in the staged / unstaged changes.', 'No issues found in the changed files.',
+      'The change validates the retry limit.\nNo actionable regressions were identified in the diff; tests, lint, and build all pass.',
+    ]) clean(text);
+    for (const text of ['Recommendation: ship because I found no regressions in this change.', 'Recommendation: proceed because no findings remain.',
+      'The change adds a retry cap.\nRecommendation: ship because no issues remain.', '## Recommendation\n\nApprove because I found no issues.']) clean(text, 'review');
+  });
+
+  test('a whole-change scope may name the branch or the base it is diffed against, and nothing more', () => {
+    for (const text of ['No issues found in the changes on this branch.', 'I found no actionable regressions in the branch diff.',
+      'No issues found in the diff against main.', 'No issues found in the diff against the base branch.',
+      'No issues found in the changes on this branch against origin/main.', 'After reviewing the changes on this branch, I found no issues.']) clean(text);
+    clean('Recommendation: ship because no issues in the changes on this branch.', 'review');
+    for (const text of ['No issues found in the changes on this branch, except the auth path.', 'No issues found in the diff against main, so ship it.',
+      'No issues found in the changes on this branch?', 'No issues found in the diff against the auth module.',
+      'No issues found in the branch diff against main except the auth path.', 'No issues found in the diff against origin/main-except-the-auth-path.',
+      'No issues found in the diff against origin/feature/auth-only.']) unverified(text);
   });
 });
 
@@ -259,6 +482,36 @@ describe('B1: a review whose sandbox could not start is unavailable, not clean',
     expect(r.status).toBe(1);
     expect(r.stdout).toContain('REASON: sandbox_unavailable');
     expect(r.stderr).toStartWith(`Codex outside review unavailable: Codex's sandbox could not start here (${BWRAP}`);
+  });
+});
+
+describe('Codex token usage from --json events (#2948)', () => {
+  const turn = (usage: Record<string, number>) => JSON.stringify({ type: 'turn.completed', usage });
+
+  test('one turn: every counter the event carries, nothing invented', () => {
+    expect(usageFromEvents(turn({ input_tokens: 12016, cached_input_tokens: 0, cache_write_input_tokens: 12013, output_tokens: 5, reasoning_output_tokens: 0 })))
+      .toEqual({ input_tokens: 12016, cached_input_tokens: 0, cache_write_input_tokens: 12013, output_tokens: 5, reasoning_output_tokens: 0, usd: 'unknown' });
+  });
+
+  test('the latest turn wins (codex reports the running session total); malformed and unrelated lines are skipped', () => {
+    const events = [turn({ input_tokens: 100, output_tokens: 10 }), 'not json', '{"type":"item.completed","item":{"type":"agent_message"}}', turn({ input_tokens: 150, output_tokens: 15, reasoning_output_tokens: 2 })].join('\n');
+    expect(usageFromEvents(events)).toEqual({ input_tokens: 150, output_tokens: 15, reasoning_output_tokens: 2, usd: 'unknown' });
+  });
+
+  test('a cumulative total_token_usage snapshot wins over per-turn usage, latest first', () => {
+    const snap = (n: number) => JSON.stringify({ msg: { type: 'token_count', info: { total_token_usage: { input_tokens: n, output_tokens: n / 10, total_tokens: n * 1.1 } } } });
+    expect(usageFromEvents([turn({ input_tokens: 7 }), snap(100), snap(300)].join('\n'))).toEqual({ input_tokens: 300, output_tokens: 30, total_tokens: 330, usd: 'unknown' });
+  });
+
+  test('the CLI prints OUTSIDE_USAGE only when given --events, on every verdict', () => {
+    const events = path.join(TMP, 'usage-events.jsonl');
+    fs.writeFileSync(events, turn({ input_tokens: 1200, cached_input_tokens: 200, output_tokens: 340 }) + '\n');
+    const withEvents = cli(['--events', events, 'review', file('No issues found.')]);
+    expect(withEvents.stdout).toContain('OUTSIDE_USAGE: input=1200 cached_input=200 output=340\n');
+    const empty = path.join(TMP, 'no-usage.jsonl');
+    fs.writeFileSync(empty, '{"type":"thread.started"}\n');
+    expect(cli(['--events', empty, 'review', file('')]).stdout).toContain('OUTSIDE_USAGE: unknown\n');
+    expect(cli(['--verdict', 'review', file('No issues found.')]).stdout).not.toContain('OUTSIDE_USAGE');
   });
 });
 

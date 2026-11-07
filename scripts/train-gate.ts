@@ -49,7 +49,7 @@ export const MAX_BISECT_CASES = 40;
 /** A full gate's recorded cost (MEASUREMENT.md: $90.93 to $94.70; lib/gate-cost.ts uses the same scale). */
 export const FULL_GATE_USD = 93.14;
 /** T1's prefix commits: `train T<i>: merge #<pr> at <sha12>` (lib/ship-queue-train.ts buildChain). */
-const PREFIX_SUBJECT = /^train T(\d+): merge #(\d+) at [0-9a-f]{12}$/;
+const PREFIX_SUBJECT = /^train (?:T(\d+): merge #(\d+) at [0-9a-f]{12}|S(\d+): merge #(\d+) at [0-9a-f]{12} v[0-9.]+)$/;
 
 export type Git = (args: string[]) => { ok: boolean; out: string };
 export const gitIn = (cwd: string): Git => (args) => {
@@ -61,8 +61,14 @@ export type RunMode = 'screen' | 'train' | 'bisect' | 'dispatch';
 export interface RouteInput {
   nonce: string; refName: string; head: string; expectedSha: string; evalsAll: boolean; trainPolicy: boolean;
   cases: string; prefixShas: string; screenPr: string; screenMergeSha: string; screenPolicy: string;
+  /** The default branch's policy declares a release_gate block (lib/release-gate-policy.ts). */
+  releasePolicy?: boolean;
 }
-export interface Route { mode: RunMode; cases: string[]; prefixes: string[] }
+/** artifact: the prefix of a release bisect's per-prefix records (a train bisect uses the train block's record_artifact). */
+export interface Route { mode: RunMode; cases: string[]; prefixes: string[]; artifact?: string }
+/** The release gate's bisect runs on its own ref and names its own prefix records (lib/release-gate.ts RELEASE_REF_PREFIX, RELEASE_BISECT_ARTIFACT). */
+export const RELEASE_BISECT_REF = 'release-gate/';
+export const RELEASE_BISECT_ARTIFACT = 'gstack-release-record';
 
 const list = (text: string) => text.split(',').map(item => item.trim()).filter(Boolean);
 
@@ -88,7 +94,8 @@ export function routeDispatch(i: RouteInput, deps: { isAncestor(commit: string, 
     const cases = list(i.cases);
     const prefixes = list(i.prefixShas);
     if (scope?.purpose !== 'bisect') return { error: `a bisect needs a bisect nonce (got ${JSON.stringify(i.nonce)})` };
-    if (!i.refName.startsWith('train/')) return { error: `a bisect runs on train/<nonce>, not ${i.refName}` };
+    const release = i.refName.startsWith(RELEASE_BISECT_REF);
+    if (!release && !i.refName.startsWith('train/')) return { error: `a bisect runs on train/<nonce> (or the release gate's ${RELEASE_BISECT_REF}<id>), not ${i.refName}` };
     if (i.expectedSha !== i.head) return { error: `expected_sha ${i.expectedSha.slice(0, 12) || '(empty)'} is not the train head ${i.head.slice(0, 12)} checked out from ${i.refName}` };
     if (!cases.length || cases.length > MAX_BISECT_CASES || new Set(cases).size !== cases.length) return { error: `cases must name 1 to ${MAX_BISECT_CASES} distinct case ids` };
     if (!prefixes.length || prefixes.length > MAX_PREFIXES || new Set(prefixes).size !== prefixes.length) return { error: `prefix_shas must name 1 to ${MAX_PREFIXES} distinct commits` };
@@ -99,6 +106,7 @@ export function routeDispatch(i: RouteInput, deps: { isAncestor(commit: string, 
     const plan = deps.gateCases();
     const unknown = cases.filter(id => !CASE_ID.test(id) || !plan.has(id));
     if (unknown.length) return { error: `case(s) not in the full gate's plan: ${unknown.slice(0, 5).join(', ')}` };
+    if (release) return i.releasePolicy ? { mode: 'bisect', cases, prefixes, artifact: RELEASE_BISECT_ARTIFACT } : { error: "a release bisect needs a release_gate block in the default branch's .gstack/ship-policy.json" };
     return trainOnly('bisect') ?? { mode: 'bisect', cases, prefixes };
   }
   if (scope?.purpose === 'train') {
@@ -185,9 +193,10 @@ export function stampFreeTree(git: Git, commit: string, repoRoot: string, policy
   return createHash('sha256').update(lines.sort().join('\n')).digest('hex');
 }
 
-export interface TrainPrefixTree { index: number; commit: string; tree: string; stamp_free_tree: string }
+/** `exact`: a stamped prefix S_i (changelog_fragments trains), which covers only its exact tree. */
+export interface TrainPrefixTree { index: number; commit: string; tree: string; stamp_free_tree: string; exact?: true }
 
-/** T1..Tk from the train head, walking first parents over T1's prefix commits. */
+/** T1..Tk (or stamped S1..Sk, never mixed) from the train head, walking first parents over the prefix commits. */
 export function trainPrefixes(git: Git, head: string, repoRoot: string, policy: ShipPolicy): TrainPrefixTree[] | { error: string } {
   const log = git(['log', '--first-parent', `--max-count=${MAX_PREFIXES}`, '--format=%H%x00%P%x00%s', head]);
   if (!log.ok) return { error: `cannot walk ${head.slice(0, 12)}'s first parents (${log.out.split('\n')[0]})` };
@@ -196,11 +205,13 @@ export function trainPrefixes(git: Git, head: string, repoRoot: string, policy: 
     const [commit, parents, subject] = line.split('\0') as [string, string, string];
     const m = PREFIX_SUBJECT.exec(subject ?? '');
     if (!m || parents.split(' ').length !== 2) break;
-    const index = Number(m[1]);
+    const index = Number(m[1] ?? m[3]);
+    const exact = m[3] !== undefined;
+    if (found.length && exact !== !!found[0]!.exact) return { error: `${commit.slice(0, 12)} mixes stamped and plain prefixes` };
     if (found.length && index !== found.at(-1)!.index - 1) return { error: `prefix T${index} follows T${found.at(-1)!.index} at ${commit.slice(0, 12)}` };
     const digest = stampFreeTree(git, commit, repoRoot, policy);
     if (typeof digest !== 'string') return digest;
-    found.push({ index, commit, tree: git(['rev-parse', `${commit}^{tree}`]).out, stamp_free_tree: digest });
+    found.push({ index, commit, tree: git(['rev-parse', `${commit}^{tree}`]).out, stamp_free_tree: digest, ...(exact ? { exact: true as const } : {}) });
   }
   if (!found.length || found.at(-1)!.index !== 1) return { error: `${head.slice(0, 12)} is not a train head (no T1..Tk prefix chain)` };
   return found.reverse();
@@ -356,12 +367,12 @@ if (import.meta.main) {
   if (command === 'route') {
     const env = process.env;
     const route = routeDispatch({ nonce: env.NONCE ?? '', refName: env.GITHUB_REF_NAME ?? '', head: git(['rev-parse', 'HEAD']).out, expectedSha: env.EXPECTED_SHA ?? '',
-      evalsAll: env.EVALS_ALL === 'true', trainPolicy: env.TRAIN_POLICY === 'true', cases: env.CASES ?? '', prefixShas: env.PREFIX_SHAS ?? '',
+      evalsAll: env.EVALS_ALL === 'true', trainPolicy: env.TRAIN_POLICY === 'true', releasePolicy: env.RELEASE_POLICY === 'true', cases: env.CASES ?? '', prefixShas: env.PREFIX_SHAS ?? '',
       screenPr: env.SCREEN_PR ?? '', screenMergeSha: env.SCREEN_MERGE_SHA ?? '', screenPolicy: env.SCREEN_POLICY ?? '' },
     { isAncestor: (commit, head) => git(['merge-base', '--is-ancestor', commit, head]).ok, gateCases: () => fullGateCases(process.cwd()) });
     if ('error' in route) fail(`dispatch refused before any paid work: ${route.error}`);
     const ok = route as Route;
-    output([`mode=${ok.mode}`, `cases=${ok.cases.join(',')}`, `prefixes=${ok.prefixes.join(',')}`]);
+    output([`mode=${ok.mode}`, `cases=${ok.cases.join(',')}`, `prefixes=${ok.prefixes.join(',')}`, ...(ok.artifact ? [`record_artifact=${ok.artifact}`] : [])]);
     console.log(`- Run mode: ${ok.mode}${ok.prefixes.length ? ` (${ok.cases.length} case(s) on ${ok.prefixes.length} prefix(es))` : ''}`);
   } else if (command === 'bisect-plan') {
     const [cases, prefixes, nonce, out] = [list(flag('cases') ?? ''), list(flag('prefixes') ?? ''), flag('nonce'), flag('out')];

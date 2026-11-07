@@ -30,6 +30,8 @@ Open Claude Code and paste this. Claude does the rest.
 
 > Install gstack: run **`git clone --single-branch --depth 1 https://github.com/garrytan/gstack.git ~/.claude/skills/gstack && cd ~/.claude/skills/gstack && ./setup`** then add a "gstack" section to CLAUDE.md that says to use the /browse skill from gstack for all web browsing and never use mcp\_\_claude-in-chrome\_\_\* tools. Claude Code lists the installed skills itself, so the section needs no skill list. Then ask the user if they also want to add gstack to the current project so teammates get it.
 
+**Which updates you get:** a new install follows the `stable` channel, the tagged release (Monday and Thursday at most once every 72 hours, an important fix within about a day, never more than a week stale, plus verified security and regression fixes), instead of every merge to main. `./setup` records this the first time it runs on a machine and prints it. The clone itself starts at main's latest commit, and the updater never moves a checkout backwards, so it moves onto releases at the next cut that passes it (within a few days). A gstack contributor's checkout (marked by `bin/dev-setup`, on a branch other than origin's default `main`, or carrying local commits) and a Capy crew machine (its installer records `main`) follow `main` instead, and an install set up before stable became the default keeps following `main`. To switch, run `~/.claude/skills/gstack/bin/gstack-config set update_channel main` (every merge) or `~/.claude/skills/gstack/bin/gstack-config set update_channel stable` (releases only). Details: [docs/releases.md](docs/releases.md#channels).
+
 ### Step 2: Team mode — auto-update for shared repos (recommended)
 
 From inside your repo, paste this. Switches you to team mode, bootstraps the repo so teammates get gstack automatically, and commits the change:
@@ -38,7 +40,7 @@ From inside your repo, paste this. Switches you to team mode, bootstraps the rep
 (cd ~/.claude/skills/gstack && ./setup --team) && ~/.claude/skills/gstack/bin/gstack-team-init required && git add .claude/ CLAUDE.md && git commit -m "require gstack for AI-assisted work"
 ```
 
-No vendored files in your repo, no version drift, no manual upgrades. Every Claude Code session starts with a fast auto-update check (throttled to once/hour, network-failure-safe, completely silent). Team mode follows the `stable` channel: the twice-weekly tagged release (Monday and Thursday, at most once every 72 hours, plus verified security and regression fixes), not every merge to main. `gstack-config set update_channel main` follows every merge instead; see [docs/releases.md](docs/releases.md).
+No vendored files in your repo, no version drift, no manual upgrades. Every Claude Code session starts with a fast auto-update check (throttled to once/hour, network-failure-safe, completely silent). Team mode follows the `stable` channel while `update_channel` is `auto` (so also on an install from before stable became the default): the tagged release (Monday and Thursday at most once every 72 hours, an important fix within about a day, never more than a week stale, plus verified security and regression fixes), not every merge to main. `gstack-config set update_channel main` follows every merge instead; see [docs/releases.md](docs/releases.md#channels).
 
 Swap `required` for `optional` if you'd rather nudge teammates than block them.
 
@@ -77,12 +79,13 @@ installs and passes the conformance tests but has no certification run yet;
 | Kiro | experimental | `--host kiro` → `~/.kiro/skills/gstack-*/` | ask for `gstack-office-hours` | advisory, not blocked | Codex CLI, signed in | `./setup --host kiro` |
 | GitHub Copilot CLI | experimental | `--host copilot` → `~/.copilot/skills/gstack-*/` | `/gstack-office-hours` | advisory, not blocked | Codex CLI, signed in | `./setup --host copilot` |
 | Antigravity CLI | experimental | `--host agy` (or `--host antigravity`) → `~/.gemini/antigravity-cli/skills/gstack-*/` | `/gstack-office-hours` | advisory, not blocked | Codex CLI, signed in | `./setup --host agy` |
+| Gemini CLI | experimental | `--host gemini` (or `--host gemini-cli`) → `~/.gemini/skills/gstack-*/` | ask for `gstack-office-hours` | advisory, not blocked | Codex CLI, signed in | `./setup --host gemini` |
 | Slate | instruction-only | `--host slate` (points at the Claude install; Slate reads `.claude/skills`) | `/office-hours` via the Claude install | advisory, not blocked | — | `./setup --host claude` |
-| OpenClaw | experimental | `--host openclaw` (one `gstack` router skill in OpenClaw's skills folder; automatic when setup runs inside OpenClaw; ACP route in [docs/OPENCLAW.md](docs/OPENCLAW.md)) | ask for the task; the agent opens the `gstack` skill | advisory, not blocked | — | `./setup --host openclaw` |
+| OpenClaw | experimental | `--host openclaw` (five task skills and one `gstack` router skill in OpenClaw's skills folder; automatic when setup runs inside OpenClaw; ACP route in [docs/OPENCLAW.md](docs/OPENCLAW.md)) | ask for the task; the agent opens the matching task skill or the `gstack` router | advisory, not blocked | — | `./setup --host openclaw` |
 | Hermes | experimental | `--host hermes` (every skill in `$HERMES_HOME/skills/gstack`; automatic when setup runs inside Hermes) | ask for the task, or `/gstack-review` | advisory, not blocked | — | `./setup --host hermes` |
 | GBrain (mod) | instruction-only | `--host gbrain` (brain-aware variants ship from the GBrain repo) | — | advisory, not blocked | — | — |
 
-Per-host notes (agent harnesses, Copilot, Antigravity, OpenClaw and ClawHub, the Codex behavioral profile and model tiers, outside-review providers, the design binary's models) are in [docs/hosts.md](docs/hosts.md). Any rules-reading agent (Zed, Amp, Jules) can use the 2KB [agents digest](agents-digest/gstack-AGENTS.md) with no install. Adding a host: [docs/ADDING_A_HOST.md](docs/ADDING_A_HOST.md).
+Per-host notes (agent harnesses, Copilot, Antigravity, Gemini CLI, OpenClaw and ClawHub, the Codex behavioral profile and model tiers, outside-review providers, the design binary's models) are in [docs/hosts.md](docs/hosts.md). Any rules-reading agent (Zed, Amp, Jules) can use the 2KB [agents digest](agents-digest/gstack-AGENTS.md) with no install. Adding a host: [docs/ADDING_A_HOST.md](docs/ADDING_A_HOST.md).
 
 ## See it work
 
@@ -108,8 +111,8 @@ Claude: I'm going to push back on the framing. You said "daily briefing
 You:    /plan-ceo-review
         [reads the design doc, challenges scope, runs 10-section review]
 
-You:    /plan-eng-review
-        [ASCII diagrams for data flow, state machines, error paths]
+You:    /autoplan
+        [eng phase: ASCII diagrams for data flow, state machines, error paths]
         [test matrix, failure modes, security concerns]
 
 You:    Approve plan. Exit plan mode.
@@ -133,13 +136,12 @@ gstack is a process, not a collection of tools. The skills run in the order a sp
 
 **Think → Plan → Build → Review → Test → Ship → Reflect**
 
-Each skill feeds into the next. `/office-hours` writes a design doc that `/plan-ceo-review` reads. `/plan-eng-review` writes a test plan that `/qa` picks up. `/review` catches bugs that `/ship` verifies are fixed. Nothing falls through the cracks because every step knows what came before it.
+Each skill feeds into the next. `/office-hours` writes a design doc that `/plan-ceo-review` reads. `/autoplan`'s eng phase writes a test plan that `/qa` picks up. `/review` catches bugs that `/ship` verifies are fixed. Nothing falls through the cracks because every step knows what came before it.
 
 | Skill | Your specialist | What they do |
 |-------|----------------|--------------|
 | `/office-hours` | **YC Office Hours** | Start here. Six forcing questions that reframe your product before you write code. Pushes back on your framing, challenges premises, generates implementation alternatives. Design doc feeds into every downstream skill. |
 | `/plan-ceo-review` | **CEO / Founder** | Rethink the problem. Find the 10-star product hiding inside the request. Four modes: Expansion, Selective Expansion, Hold Scope, Reduction. |
-| `/plan-eng-review` | **Eng Manager** | Lock in architecture, data flow, diagrams, edge cases, and tests. Forces hidden assumptions into the open. |
 | `/plan-design-review` | **Senior Designer** | Rates each design dimension 0-10, explains what a 10 looks like, then edits the plan to get there. AI Slop detection. Interactive — one AskUserQuestion per design choice. |
 | `/plan-devex-review` | **Developer Experience Lead** | Interactive DX review: explores developer personas, benchmarks against competitors' TTHW, designs your magical moment, traces friction points step by step. Scores error messages for the agents that read them ([agent-ready errors](docs/agent-ready-errors.md)). Three modes: DX EXPANSION, DX POLISH, DX TRIAGE. 20-45 forcing questions. |
 | `/design-consultation` | **Design Partner** | Build a complete design system from scratch. Researches the landscape, proposes creative risks, generates realistic product mockups. Writes `DESIGN.md` in the open DESIGN.md format, so impeccable, Google Stitch, and any tool that reads it share one file. |
@@ -147,7 +149,7 @@ Each skill feeds into the next. `/office-hours` writes a design doc that `/plan-
 | `/deslop-shared-libs` | **Shared Code Reviewer** | Find worthwhile shared-code extractions in recent work. Compares up to five opportunities and recommends the best three, with source evidence, reliability gains, and total code savings. Recommendations only. |
 | `/write-skill` | **Skill Editor** | Write a new agent skill or improve one without bloat. A five-step edit ladder (fix the tool first, add nothing the model already does, edit the line instead of appending, lowest level that reaches the agent, rule not story), `gstack-skill-bill` for size per level and growth since the last diet, a drift check that every gstack command and flag a skill names still exists, and full diets proven by a before/after/no-skill test. |
 | `/test-audit` | **Test Auditor** | Sweep existing tests for ones that cost more than they protect: source greps, duplicates, assertion-free probes, test-only exports. Every candidate carries an evidence card; report-only unless you approve a batch. |
-| `/investigate` | **Debugger** | Systematic root-cause debugging. Iron Law: no fixes without investigation. Traces data flow, tests hypotheses, stops after 3 failed fixes. |
+| `/verify` | **Build Loop** | Run the repo's own checks (typecheck, lint, build) and the tests `/ship`'s pre-gate would pick for your change, fix what breaks, repeat until green, then hand off to `/ship`. Asks once before running repo commands; never calls a change green when no test covers it. |
 | `/design-review` | **Designer Who Codes** | Same audit as /plan-design-review, then fixes what it finds. Atomic commits, before/after screenshots. If you have impeccable installed, its engine runs first and every mechanical finding arrives tagged with its rule id. |
 | `/devex-review` | **DX Tester** | Live developer experience audit. Actually tests your onboarding: navigates docs, tries the getting started flow, times TTHW, triggers CLI errors the way an agent meets them (`gstack-error-capture`: no terminal, contained, redacted). Compares against `/plan-devex-review` scores — the boomerang that shows if your plan matched reality. |
 | `/design-shotgun` | **Design Explorer** | "Show me options." Generates 4-6 AI mockup variants, opens a comparison board in your browser, collects your feedback, and iterates. Taste memory learns what you like. Repeat until you love something, then hand it to `/design-html`. |
@@ -163,10 +165,11 @@ Each skill feeds into the next. `/office-hours` writes a design doc that `/plan-
 | `/canary` | **SRE** | Post-deploy monitoring loop. Watches for console errors, performance regressions, and page failures. |
 | `/benchmark` | **Performance Engineer** | Baseline page load times, Core Web Vitals, and resource sizes. Compare before/after on every PR. |
 | `/ubicloud` | **Remote Runner** | Run a heavy suite, build or eval on an ephemeral 16-vCPU Ubicloud VM: owner- and TTL-named VMs with a reaper, quota preflight, a hang watchdog, and one committed verify per repository. |
+| `/runaway-stopper` | **Spend Warden** | Find runaway agent threads and subagents on Capy (own context past 500M tokens, active past 3 days, a subagent past 100M, empty wakes, endless review rounds), stop them at a clean point, rotate threads through a handoff, and set the defaults that keep them from coming back. `gstack-runaway scan` reads the host's own thread data and never acts. |
 | `/eval-plan` | **Eval Planner** | Preregister a paid eval before the first priced call: bars, arms, decoys and stop rules, a $0 stub-model dry run over the real inputs, and a three-item priced pilot whose extrapolation and spend table gate the approval. |
 | `/document-release` | **Technical Writer** | Audit changed behavior against project docs on every ship, before final verification and publication. Also runs standalone. Shows updated, reviewed/current or blocked docs and any remaining gaps. |
 | `/document-generate` | **Documentation Author** | Generate missing docs from scratch using the Diataxis framework. Researches the codebase first, then writes reference / how-to / tutorial / explanation docs that actually match the code. Invokable standalone or chained from `/document-release` when the coverage map finds gaps. Learn more: [tutorial](docs/tutorial-document-generate.md) • [how-to](docs/howto-document-a-shipped-feature.md) • [why Diataxis](docs/explanation-diataxis-in-gstack.md). |
-| `/retro` | **Eng Manager** | Team-aware weekly retro. Per-person breakdowns, shipping streaks, test health trends, growth opportunities. `/retro global` runs across all your projects and AI tools (Claude Code, Codex, Gemini). |
+| `/retro` | **Eng Manager** | Team-aware weekly retro. Per-person breakdowns, shipping streaks, test health trends, growth opportunities. `/retro global` runs across all your projects and AI tools (Claude Code, Codex, Gemini, Kimi Code, OMP, Antigravity). |
 | `/browse` | **QA Engineer** | Give the agent eyes. Drives your [Aside](https://aside.com) browser first — your real sessions, real clicks, real screenshots — through deterministic `aside repl` scripts. No Aside? It falls back to gstack's own Chromium: real clicks, ~100ms per command, and `/open-gstack-browser` shows it headed with sidebar, anti-bot stealth, and auto model routing. Every other browser skill stands on it. |
 | `/scrape` | **Data Extractor** | Pull structured data off a web page — tables, lists, prices — in your Aside browser with the page's real logged-in state. On the fallback browser, `/skillify` turns the flow into a permanent browser-skill that runs in ~200ms next time. |
 | `/setup-browser-cookies` | **Session Manager** | Copy selected cookies from Chrome, Chromium, Brave, Edge, Windows-only Opera and Opera GX, or macOS-only Comet and Arc into gstack's bundled browser. Choose your profile and domains; copying and sign-in verification are separate. Only needed on the fallback path — Aside already has your sessions. |
@@ -184,7 +187,7 @@ The same `/qa` and `/qa-only` commands test CLIs, APIs, jobs, workers and webhoo
 |-----------------|--------------------------|----------------------------|
 | **End users** (UI, web app, mobile) | `/plan-design-review` | `/design-review` |
 | **Developers** (API, CLI, SDK, docs) | `/plan-devex-review` | `/devex-review` |
-| **Architecture** (data flow, perf, tests) | `/plan-eng-review` | `/review` |
+| **Architecture** (data flow, perf, tests) | `/autoplan` (eng phase) | `/review` |
 | **All of the above** | `/autoplan` (runs CEO → design → DX → eng, auto-detects which apply; eng always last) | — |
 
 ### Power tools
@@ -224,6 +227,8 @@ Other references: [docs/gbrain-sync.md](docs/gbrain-sync.md) (sync-specific guid
 
 ## Platform notes
 
+macOS and Linux get full support. Windows and Gemini models get minimal support: install and the core skills work, and nothing more is promised. See [support tiers](docs/support-tiers.md).
+
 **macOS:** everything runs. With the [Aside](https://aside.com) browser (macOS 15+) open and signed in, the browser skills, `/make-pdf` and `/diagram` use it and your real sessions; otherwise they use the bundled browser `./setup` builds. gstack never installs Aside.
 
 **Linux:** everything runs on the bundled browser; Aside is macOS-only, so the readiness probe says `NEEDS_ASIDE: Linux` once and the skills use gstack's own Chromium. If Chromium installs but cannot launch because the host blocks unprivileged user namespaces (Ubuntu 24.04+ AppArmor default), set `GSTACK_CHROMIUM_NO_SANDBOX=1`.
@@ -240,8 +245,9 @@ On Windows without Developer Mode (MSYS2 / Git Bash), `setup` falls back to file
 
 | Doc | What it covers |
 |-----|---------------|
-| [Skill Deep Dives](docs/skills.md) | Philosophy, examples, and workflow for every skill (includes Greptile integration) |
+| [Skill Deep Dives](docs/skills.md) | Philosophy, examples, and workflow for every skill (includes review-bot triage for Greptile, CodeRabbit and other bots) |
 | [The recommended harness](docs/recommended-harness.md) | gstack + Capy from zero to the first merged train: install, the Captain and its Drive, trains, the daily flaky pass, the twice-weekly release, the factory scorecard, what is Capy-specific, known Capy limits |
+| [gstack + Capy: the software factory](capy/README.md) | What we built with Capy Captains and gstack, how the pieces fit, the measured before/after, tips, and how Garry uses it |
 | [Why gstack](docs/why-gstack.md) | The story, the productivity numbers and their caveats, Karpathy's failure modes, parallel sprints |
 | [Install details](docs/install.md) | Setup timing, requirements in detail, team mode, the hooks setup registers, agent harness registration |
 | [Other agents](docs/hosts.md) | Agent harnesses (OpenClaw, Hermes, dots, QM, Muse Code, Grok, any other), OpenClaw and ClawHub, per-host notes, the Codex profile and model tiers, outside-review providers, the design binary's models |

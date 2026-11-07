@@ -33,7 +33,8 @@
  *
  * Install profiles (INSTALL_PROFILES) are SKILL_REQUIREMENTS rows that name an
  * install shape instead of a skill directory. `--for review-voice` is the one
- * today: a dispatched reviewer's machine gets a clone or fast-forward and Bun
+ * today: a dispatched reviewer's machine gets a clone when absent (an existing
+ * checkout is used as is unless it is below the supported minimum) and Bun
  * at gstack's own minimum (the project's pins are never applied, so `pins`
  * SKIPs), no ./setup and no host profiles, and the trailer certifies only the
  * read-only helpers (`helpers`). Its verdict covers no host, so admission
@@ -133,7 +134,6 @@ export function capyBootstrapCommand(skill: string, root: string = CAPY_INSTALL_
 export const SKILL_REQUIREMENTS: Readonly<Record<string, SkillRequirement>> = {
   autoplan: PLANNING,
   'plan-ceo-review': PLANNING,
-  'plan-eng-review': PLANNING,
   'plan-design-review': PLANNING,
   'plan-devex-review': PLANNING,
   'plan-tune': PLANNING,
@@ -141,7 +141,6 @@ export const SKILL_REQUIREMENTS: Readonly<Record<string, SkillRequirement>> = {
   spec: PLANNING,
   review: PLANNING,
   ship: PLANNING,
-  investigate: PLANNING,
   codex: { requires: ['claude', 'codex', 'patch', 'codex-cli'], optional: [] },
   cso: { requires: ['claude', 'cso'], optional: [] },
   browse: BROWSER,
@@ -188,12 +187,14 @@ export const SKILL_REQUIREMENTS: Readonly<Record<string, SkillRequirement>> = {
   'write-skill': CLAUDE_ONLY,
   modernize: CLAUDE_ONLY,
   retro: CLAUDE_ONLY,
+  'runaway-stopper': CLAUDE_ONLY,
   'setup-deploy': CLAUDE_ONLY,
   'setup-gbrain': CLAUDE_ONLY,
   'sync-gbrain': CLAUDE_ONLY,
   'test-audit': CLAUDE_ONLY,
   ubicloud: CLAUDE_ONLY,
   unfreeze: CLAUDE_ONLY,
+  verify: CLAUDE_ONLY,
   'review-voice': REVIEW_VOICE,
 };
 
@@ -205,7 +206,7 @@ export const SKILL_REQUIREMENTS: Readonly<Record<string, SkillRequirement>> = {
  * required.
  */
 export const PINS_ADVISORY_SKILLS: readonly string[] = [
-  'autoplan', 'plan-ceo-review', 'plan-eng-review', 'plan-design-review', 'plan-devex-review', 'office-hours',
+  'autoplan', 'plan-ceo-review', 'plan-design-review', 'plan-devex-review', 'office-hours',
 ];
 
 /** Rows always evaluated and required, in print order. */

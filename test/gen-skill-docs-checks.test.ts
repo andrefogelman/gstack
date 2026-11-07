@@ -47,6 +47,7 @@ describe('generator artifact and dry-run contract', () => {
       { relativePath: 'review/design-checklist.md', kind: 'asset', host: 'claude' },
       { relativePath: 'lib/dom-dump.js', kind: 'asset', host: 'claude' },
       { relativePath: 'autoplan/DRIVER.md', kind: 'asset', host: 'claude' },
+      { relativePath: 'ship/DRIVER.md', kind: 'asset', host: 'claude' },
       ...ALL_HOST_NAMES.filter(host => includesSkill(getHostConfig(host), 'qa')).map(host => ({
         relativePath: host === 'claude' ? 'qa/templates/functional-report-template.md'
           : `${getHostConfig(host).hostSubdir}/skills/gstack-qa/templates/functional-report-template.md`,
@@ -66,7 +67,7 @@ describe('generator artifact and dry-run contract', () => {
     const skills = generated.artifacts.filter(a => a.kind === 'skill' && pointerId.test(fs.readFileSync(path.join(render, a.relativePath), 'utf-8')));
     expect(skills.length).toBeGreaterThan(40 * ALL_HOST_NAMES.length);
     expect(preambles.map(a => `${a.host}:${path.dirname(path.dirname(a.relativePath))}`).sort())
-      .toEqual(skills.map(a => `${a.host}:${path.dirname(a.relativePath)}`).sort());
+      .toEqual([...new Set(skills.map(a => `${a.host}:${path.dirname(a.relativePath)}`))].sort());
     for (const host of ALL_HOST_NAMES) {
       const bodies = new Set(preambles.filter(a => a.host === host).map(a => fs.readFileSync(path.join(render, a.relativePath), 'utf-8')));
       expect(bodies.size, host).toBe(1);

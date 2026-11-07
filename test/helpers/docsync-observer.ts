@@ -258,6 +258,10 @@ export function docsCommandAllowed(command: string, fixture: ReturnType<typeof f
   const insert = /^cat (['"]?)([^\s'"]+)\1 >> (['"]?)([^\s'"]+)\3$/.exec(text);
   if (insert) return [insert[2], insert[4]].every(file => path.isAbsolute(file) && /\.md$/i.test(file) &&
     !/[\x00-\x1f\x7f;&|<>`$\\()*?\[\]{}~#]/.test(file) && docsPrivateArtifact(file, fixture, scripts));
+  // The interface lets a private artifact live "in a new directory you create there" (under the home), and snapshot --out
+  // does not create its parent (gate 41817566885: the parent ran `mkdir -p <home>/ship2` before its snapshot).
+  const directory = /^mkdir (?:-p )?(['"]?)([^\s'"]+)\1$/.exec(text);
+  if (directory) return docsPrivateDirectory(directory[2]!, fixture);
   // Harmless wrappers are accepted on read-only commands only; lifecycle and
   // script calls must stay literal so their failures are not suppressed.
   const unwrapped = unwrapHarmlessRead(text, fixture);
@@ -328,6 +332,9 @@ function docsUnrollLoops(text: string): string | null {
  * The candidate's --help prints its usage and returns before it touches Git or a
  * file (bin/gstack-docs-candidate main), so joining it reads nothing more (gates
  * 40600731931 and 40627127462, screen 40558235014: the parent ended a line of reads with it).
+ * A declared read command given --help prints its own usage instead of reading, and its
+ * operands stay checked as reads (screens 40822033640 and 40815828320, gate 40809051510:
+ * the parent joined `cat <candidate> --help 2>&1 | head -N`, which printed cat's usage).
  */
 function docsComposedReadAllowed(text: string, fixture: ReturnType<typeof fixtureDocs>): boolean {
   const line = docsUnrollLoops(text);
@@ -337,13 +344,14 @@ function docsComposedReadAllowed(text: string, fixture: ReturnType<typeof fixtur
   if (!segments) return false;
   const candidate = path.join(fixture.skills, 'bin/gstack-docs-candidate').split(path.sep).join('/');
   const commands = segments.map(segment => line.slice(segment.start, segment.end).trim());
-  const declared = commands.flatMap((command, index) => /^git(?:\s|$)/.test(command) || command.startsWith(`${candidate} `) ? [index] : []);
+  const readHelp = (command: string) => DOCS_READ_COMMANDS.includes(command.split(/\s+/)[0]!) && /\s--help(?:\s|$)/.test(command);
+  const declared = commands.flatMap((command, index) => /^git(?:\s|$)/.test(command) || command.startsWith(`${candidate} `) || readHelp(command) ? [index] : []);
   if (!declared.length || commands.some(command => /^cd(?:\s|$)/.test(command))) return false;
   let neutral = line;
   for (const index of declared.reverse()) {
     const read = unwrapHarmlessRead(commands[index]!, fixture);
     const help = read !== null && /^(?:(?:snapshot|compare) )?--help$/.test(read.slice(candidate.length + 1));
-    if (segments[index - 1]?.op === '|' || read === null || !(/^git\s/.test(read) || (read.startsWith(`${candidate} `) && help))
+    if (segments[index - 1]?.op === '|' || read === null || !(/^git\s/.test(read) || (read.startsWith(`${candidate} `) && help) || readHelp(read))
       || !literalDocsCommandAllowed(read, fixture, [])) return false;
     neutral = `${neutral.slice(0, segments[index]!.start)} pwd ${neutral.slice(segments[index]!.end)}`;
   }
@@ -410,9 +418,9 @@ function literalDocsCommandAllowed(text: string, fixture: ReturnType<typeof fixt
     if (rest[0] === 'compare') return rest.length === 2 && privateJson(rest[1]);
     if (rest[0] !== 'snapshot' || rest.length % 2 !== 1) return false;
     const flags = rest.slice(1).filter((_, i) => i % 2 === 0);
-    const out = rest.slice(1).filter((_, i) => i % 2 === 1)[flags.indexOf('--out')];
-    return flags.every(flag => ['--out', '--audit-id', '--mode', '--base', '--select', '--docs'].includes(flag)) &&
-      flags.filter(flag => flag === '--out').length === 1 && privateJson(out);
+    const values = rest.slice(1).filter((_, i) => i % 2 === 1);
+    return flags.every(flag => ['--out', '--audit-id', '--mode', '--base', '--select', '--docs', '--run', '--pre', '--carry'].includes(flag)) &&
+      flags.filter(flag => flag === '--out').length === 1 && flags.every((flag, i) => !['--out', '--pre', '--carry'].includes(flag) || privateJson(values[i]));
   }
   const marker = 'GSTACK_SESSION_KIND=spawned';
   const start = path.join(fixture.skills, 'bin/gstack-skill-start').split(path.sep).join('/');
@@ -457,17 +465,28 @@ function docsPrivateArtifact(file: string, fixture: ReturnType<typeof fixtureDoc
     path.basename(file) !== 'actor-state.json' && path.basename(actual) !== 'actor-state.json';
 }
 
+/** True when `dir` is one new directory directly under the fixture home, clear of the repository and every protected root. */
+function docsPrivateDirectory(dir: string, fixture: ReturnType<typeof fixtureDocs>): boolean {
+  if (!path.isAbsolute(dir) || path.normalize(dir) !== dir || path.dirname(dir) !== fixture.home ||
+      /[\x00-\x1f\x7f;&|<>`$\\()*?\[\]{}~#]/.test(dir)) return false;
+  const roots = [fixture.repo, fixture.skills, fixture.env.CLAUDE_CONFIG_DIR, fixture.env.GSTACK_HOME, path.join(fixture.home, 'remote.git')];
+  return actualWritePath(dir) === path.join(fs.realpathSync(fixture.home), path.basename(dir)) &&
+    !roots.some(root => within(dir, root) || within(root, dir));
+}
+
 /**
- * A candidate call at a wrong binary path that does not exist exited 127 before anything ran; it is ignored only when
- * the same command at the declared path runs: after the slip for snapshot and compare, whose recovery the lifecycle
- * needs, and anywhere in the transcript for --help, which reads nothing the agent still has to recover (gate
- * 40323989742: the parent read the usage at the declared path, mistyped the path on a second --help, then went on).
+ * A call to one of Step 14.5's own helpers (the docs candidate or the cap gate; never a lifecycle helper) at a wrong
+ * binary path that does not exist exited 127 before anything ran; it is ignored only when the same command at the
+ * declared path runs: after the slip for snapshot, compare and the cap gate, whose result the workflow needs, and
+ * anywhere in the transcript for --help, which reads nothing the agent still has to recover (gate 40323989742: the
+ * parent read the usage at the declared path, mistyped the path on a second --help, then went on; screen 40749421675:
+ * the parent typed the cap gate at the shard root, then ran it at the declared path).
  */
-function candidateNotFound(calls: SkillTestResult['toolCalls'], index: number, fixture: ReturnType<typeof fixtureDocs>, scripts: string[]): boolean {
+function helperNotFound(calls: SkillTestResult['toolCalls'], index: number, fixture: ReturnType<typeof fixtureDocs>, scripts: string[]): boolean {
   const command = String(calls[index].input?.command ?? '').trim();
   const binary = command.split(' ')[0]!;
-  const candidate = path.join(fixture.skills, 'bin/gstack-docs-candidate').split(path.sep).join('/');
-  if (!/^\/[\w.\/-]+\/gstack-docs-candidate$/.test(binary) || binary === candidate) return false;
+  const declared = path.join(fixture.skills, 'bin', path.basename(binary)).split(path.sep).join('/');
+  if (!/^\/[\w.\/-]+\/gstack-(?:docs-candidate|ship-receipt)$/.test(binary) || binary === declared) return false;
   if (calls[index].output.trimEnd() !== `Exit code 127\n(eval):1: no such file or directory: ${binary}`) return false;
   try {
     fs.lstatSync(binary);
@@ -475,8 +494,8 @@ function candidateNotFound(calls: SkillTestResult['toolCalls'], index: number, f
   } catch (error) {
     if (!['ENOENT', 'ENOTDIR'].includes((error as NodeJS.ErrnoException).code ?? '')) return false;
   }
-  const retry = candidate + command.slice(binary.length);
-  const candidates = retry === `${candidate} --help` ? calls.filter((_, position) => position !== index) : calls.slice(index + 1);
+  const retry = declared + command.slice(binary.length);
+  const candidates = retry === `${declared} --help` ? calls.filter((_, position) => position !== index) : calls.slice(index + 1);
   return docsCommandAllowed(retry, fixture, scripts) && candidates.some(call =>
     call.tool === 'Bash' && String(call.input?.command ?? '').trim() === retry && !call.output.startsWith('Exit code'));
 }
@@ -487,7 +506,7 @@ export function docsToolFailures(result: SkillTestResult, fixture: ReturnType<ty
   const authoredDoc = path.join(repo, DOC_PATH);
   for (const [index, call] of result.toolCalls.entries()) {
     if (call.tool === 'Bash' && !docsCommandAllowed(String(call.input?.command ?? ''), fixture, scripts) &&
-      !candidateNotFound(result.toolCalls, index, fixture, scripts)) failures.push('command outside declared docs observation interface');
+      !helperNotFound(result.toolCalls, index, fixture, scripts)) failures.push('command outside declared docs observation interface');
     if (['Write', 'Edit'].includes(call.tool)) {
       const file = path.resolve(fixture.repo, call.input?.file_path ?? '');
       const actual = actualWritePath(file);
@@ -520,11 +539,18 @@ export function docsCompletedRead(result: SkillTestResult, file: string, fixture
     const expanded = docsUnrollLoops(command);
     const grammar = !literal && expanded !== null && !/(?:^|[;&|]\s*)cd\s/.test(command)
       && (readOnlyCommandAllowed(command, docsReadOnlyScope(fixture)) || docsComposedReadAllowed(command, fixture));
-    const catArgs = !literal && !grammar ? [] : (expanded ?? command).split(/\s*(?:;|&&|\|\|)\s*/).filter(part => /^cat\s/.test(part) && !part.includes('|'))
-      .flatMap(part => part.match(/'[^']*'|"[^"]*"|[^\s'"]+/g)?.slice(1).map(arg => /^['"]/.test(arg) ? arg.slice(1, -1) : arg) ?? []);
+    const parts = !literal && !grammar ? [] : (expanded ?? command).split(/\s*(?:;|&&|\|\|)\s*/);
+    const operands = (part: string) => part.match(/'[^']*'|"[^"]*"|[^\s'"]+/g)?.slice(1).map(arg => /^['"]/.test(arg) ? arg.slice(1, -1) : arg) ?? [];
+    const catArgs = parts.filter(part => /^cat\s/.test(part) && !part.includes('|')).flatMap(operands);
     const cat = call.tool === 'Bash' && catArgs.some(arg => resolve(arg) === target);
     if ((read || cat) && !/^(?:<tool_use_error>|Error(?: reading file|:)|Exit code [1-9]\d*\b)/i.test(call.output.trimStart()) &&
         call.output.replace(/^\s*\d+(?:→|\t)/gm, '').includes(source)) return true;
+    // A line's exit status is its last command's: when the line's first command cats the file unpiped and the output
+    // opens with its full bytes, a later command's failure does not undo that read (screen 40828580338: zsh read the
+    // separator `echo ======` as an = command lookup and abandoned the rest of the line after phase.md printed in full).
+    const status = /^Exit code [1-9]\d*\n/.exec(call.output.trimStart());
+    const lead = cat && /^cat\s/.test(parts[0]!) && !parts[0]!.includes('|') ? operands(parts[0]!).find(arg => !arg.startsWith('-')) : undefined;
+    if (status && lead !== undefined && resolve(lead) === target && call.output.trimStart().slice(status[0].length).startsWith(source)) return true;
   }
   return false;
 }

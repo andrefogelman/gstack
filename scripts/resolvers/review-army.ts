@@ -12,7 +12,7 @@
 import type { TemplateContext } from './types';
 import { CC_BACKGROUND_DEFAULT_SINCE, FOREGROUND_IF_AVAILABLE, BACKGROUND_RECOVERY } from './constants';
 import { learningsCapture, LEARNINGS_VERDICT } from './learnings';
-import { DEFENSIVE_REVIEW_FRAMING, FIXTURE_SUMMARY_MODE } from './defensive-review';
+import { DEFENSIVE_REVIEW_FRAMING, fixtureSummaryMode } from './defensive-review';
 
 function generateSpecialistSelection(ctx: TemplateContext): string {
   const isShip = ctx.skillName === 'ship';
@@ -133,13 +133,13 @@ If learnings are found, include them: "Past learnings for this domain: {learning
 
 4. **Defensive framing (Security specialist and the Red Team below only).** Begin the prompt with:
 "${DEFENSIVE_REVIEW_FRAMING}"
-and replace its full-diff command with: "${FIXTURE_SUMMARY_MODE}"
-Every other specialist, including Testing, reads the full diff with fixtures.
+and replace its full-diff command with: "${fixtureSummaryMode(ctx.skillName === 'ship')}"
+Every other specialist, including Testing, reads the full diff with fixtures.${ctx.skillName === 'ship' ? ' In that command `<exclude>` is the `:(top,exclude,glob)` items on the reader\'s `DIFF_CMD:` line (the base policy\'s review_exclude_paths), empty when it has none; gstack-review-dispatch fills it.' : ''}
 
 5. Instructions:
 
 "You are a specialist code reviewer. Read the checklist at {checklist path}, then run
-\`${diffBase(ctx)} && git diff "$DIFF_BASE"\` to get the ${ctx.skillName === 'ship' ? 'diff (`<diff-base>`: write the sha in before dispatch, the merge base on pass 1 and `RANGE_BASE` from pass 2 on; never a shell variable)' : 'full diff'}. Apply the checklist against the diff.
+\`${diffBase(ctx)} && git diff "$DIFF_BASE"${ctx.skillName === 'ship' ? ' <exclude>' : ''}\` to get the ${ctx.skillName === 'ship' ? 'diff (`<diff-base>`: write the sha in before dispatch, the merge base on pass 1 and `RANGE_BASE` from pass 2 on; never a shell variable; `<exclude>`: everything after `<diff-base>` on this reviewer\'s `DIFF_CMD:` line, verbatim; empty on `DIFF_EXCLUDE: none`)' : 'full diff'}. Apply the checklist against the diff.
 
 \`NO FINDINGS\` alone is the expected, complete result for a clean diff; never invent an item. Otherwise output one JSON object per finding per line, 400 words at most:
 {\\"severity\\":\\"CRITICAL|INFORMATIONAL\\",\\"confidence\\":N,\\"path\\":\\"file\\",\\"line\\":N,\\"category\\":\\"category\\",\\"summary\\":\\"description\\",\\"fix\\":\\"recommended fix\\",\\"fingerprint\\":\\"path:line:category\\",\\"specialist\\":\\"name\\"}
@@ -186,7 +186,12 @@ their source labels: specialist scoring is not the final review's defect count.
 After specialist attempts settle, collect their outputs, tagged by actual source.
 \`NO FINDINGS\` is a completed, clean result, never a failed reviewer. Otherwise parse
 each JSON line and skip invalid lines. Missing or unusable output is incomplete
-coverage, not an empty success. Keep each specialist's returned findings for activity stats.
+coverage, not an empty success. Keep each specialist's returned findings for activity stats.${isShip ? `
+An output that carries a state-machine matrix record (State Machines, or a batched
+reader that read its checklist) is parsed from \`${ctx.paths.binDir}/gstack-state-matrix findings <file>\`,
+after \`check\` ran on the raw file: an untested cell that is the only finding on its
+cell comes back INFORMATIONAL (\`"state_matrix":"untested-cell"\`), the test-gap ruling
+in \`docs/review-policy.md\`; a wrong row or collapsed kinds stays CRITICAL.` : ''}
 
 #### 2. Validate severity
 
@@ -320,7 +325,7 @@ The Red Team subagent receives:
 
 Prompt, after the defensive framing and fixture handling from item 4 of the specialist dispatch: "You are a red team reviewer. The code has already been reviewed by N specialists
 who found the following issues: {merged findings summary}. Your job is to find what they
-MISSED. Read the checklist at {red-team checklist path}, list changed files with \`${diffBase(ctx)} && git diff --name-status "$DIFF_BASE"\`, read them as that fixture handling says, and look for gaps.
+MISSED. Read the checklist at {red-team checklist path}, list changed files with \`${diffBase(ctx)} && git diff --name-status "$DIFF_BASE"${ctx.skillName === 'ship' ? '<list-exclude>' : ''}\`, read them as that fixture handling says, and look for gaps.
 Output findings as JSON objects (same schema as the specialists), or \`NO FINDINGS\` alone, the expected result when they missed nothing. Focus on cross-cutting
 concerns, integration boundary issues, and failure modes that specialist checklists
 don't cover."

@@ -9,7 +9,10 @@
  * `pr-body` merges by `## ` section into the PR's current body (read through
  * the same runner): a section in the file replaces the same-titled one, the
  * ship-receipt block is a section of its own, sections the file does not
- * rewrite are kept, new ones are appended; `--replace` overwrites instead.
+ * rewrite are kept, new ones are appended, and a file with a receipt above
+ * its first `## ` section replaces the text between the receipt and the
+ * first heading while the opening text above the receipt is kept;
+ * `--replace` overwrites instead.
  * The scan runs on the merged bytes, which are the bytes sent.
  *
  * Exit codes: 0 posted; 1 HIGH finding (or oversize input) refused;
@@ -157,7 +160,7 @@ function parseArgs(argv: string[]): Request {
   return req;
 }
 
-/** One piece of a PR body: the leading text, a `## ` section, the ship-receipt block, or text after a receipt block. */
+/** One piece of a PR body: the leading text, a `## ` section, the ship-receipt block, text after a receipt block, or a Capy badge that ends the body. */
 interface Section { key: string; label: string; text: string }
 
 /**
@@ -172,25 +175,42 @@ interface Section { key: string; label: string; text: string }
  * nothing; a receipt fence that never closes makes the body from that line
  * on one section the merge never matches (`unclosed-receipt`), so it is kept
  * byte for byte instead of being read as a receipt or as replaceable text.
+ * A Capy badge (`<!-- capy-badge:start -->` through `<!-- capy-badge:end -->`,
+ * both outside a fence) that ends the body after its first receipt or
+ * heading, with only blank lines after it, is a piece of its own
+ * (`badge:capy-badge`), so it never leaves with the section above it
+ * (GST-1227). A badge anywhere else, an unclosed badge marker and every other
+ * marker block stay inside the section they sit in.
  */
 function splitSections(body: string): Section[] {
   const out: Section[] = [];
   let fence: string | null = null;
+  let badgeAt = -1;
+  let inBadge = false;
   let plain = 0;
-  const open = (key: string, label: string) => out.push({ key, label, text: "" });
+  const open = (key: string, label: string) => { badgeAt = -1; inBadge = false; out.push({ key, label, text: "" }); };
   const openText = () => out.length === 0 ? open("text:lead", "leading text") : open(`text:${plain++}`, "trailing text");
   const closes = (run: string) => new RegExp(`^ {0,3}${run[0] === "`" ? "`" : "~"}{${run.length},}\\s*$`).test(bare);
   let bare = "";
   for (const line of body.split(/(?<=\n)/)) {
     bare = line.replace(/\r?\n$/, "");
     const fenceOpen: RegExpExecArray | null = fence === null ? /^ {0,3}(`{3,}|~{3,})/.exec(bare) : null;
+    const outside = fence === null && !fenceOpen;
     if (fenceOpen && bare.trim() === "```" + RECEIPT_FENCE) { open("receipt", "ship receipt"); fence = "receipt"; }
     else if (fence === "receipt") { out.at(-1)!.text += line; if (closes("```")) { fence = null; openText(); } continue; }
     else if (fenceOpen) fence = fenceOpen[1]!;
     else if (fence && closes(fence)) fence = null;
     else if (fence === null && /^ {0,3}## /.test(bare)) { const title = bare.replace(/^ {0,3}## /, "").trim(); open(`h2:${title.toLowerCase()}`, title); }
     if (out.length === 0) openText();
+    if (outside && /^ {0,3}<!-- capy-badge:start -->/.test(bare)) { badgeAt = out.at(-1)!.text.length; inBadge = true; }
+    else if (inBadge && outside && /<!-- capy-badge:end -->/.test(bare)) inBadge = false;
+    else if (!inBadge && bare.trim() !== "") badgeAt = -1;
     out.at(-1)!.text += line;
+  }
+  const last = out.at(-1);
+  if (last && badgeAt >= 0 && !inBadge && fence === null && last.key !== "text:lead") {
+    out.push({ key: "badge:capy-badge", label: "capy-badge block", text: last.text.slice(badgeAt) });
+    last.text = last.text.slice(0, badgeAt);
   }
   if (fence === "receipt") Object.assign(out.at(-1)!, { key: "unclosed-receipt", label: "unclosed receipt fence" });
   return out.filter(s => s.text !== "");
@@ -200,30 +220,70 @@ function splitSections(body: string): Section[] {
  * The body to send for `pr-body` without `--replace`: each section of the
  * file replaces the same-keyed section of the current body in place, current
  * sections the file does not rewrite are kept byte for byte, new `## `
- * sections are appended after them, and a new receipt or leading text goes
- * first (where lib/ship-receipt.ts puts the receipt). Text outside sections
+ * sections are appended after them (above a Capy badge that ends the body;
+ * a badge only the file brings goes last), new leading text goes first, and a new receipt goes right after the
+ * current leading text, or first when there is none (where
+ * lib/ship-receipt.ts puts the receipt). Text outside sections
  * matches by role (the file's leading text replaces the leading text; text
  * after a receipt block never replaces an intro), and whitespace-only text in
  * the file is dropped, so reposting the body /ship composes (receipt, blank
  * line, sections) yields the same bytes. A blank
  * line separates the two sides of every seam the merge creates; two kept
  * neighbours keep their bytes. An empty current body yields the file unchanged.
+ * A file section whose title the current body holds more than once (an old
+ * description pasted under the new one) matches no single section, so the
+ * merge refuses instead of replacing one copy and keeping the stale other.
+ * A full post (a file with a receipt block above its first `## ` section, as
+ * /ship composes it) manages the text under the receipt (GST-412): every
+ * non-blank text section after a receipt block and before the current body's
+ * first heading is dropped, the file's own text after its receipt takes its
+ * place, right after the receipt, and a dropped piece the file brings no text for
+ * is listed in `dropped` with its first line (withheld when the redaction scan
+ * flags it, since the merged bytes no longer hold it). The current leading text
+ * (the opening paragraph and a bot's badge above the first receipt or heading)
+ * is kept byte for byte unless the file brings leading text of its own, which
+ * replaces it as in any merge (GST-1227). Any other file (`## ` sections with
+ * no receipt above them, or no `## ` section) merges as described above, so
+ * the text under the receipt is kept too.
  */
-export function mergeBodySections(current: string, incoming: string): { body: string; replaced: string[]; kept: string[]; added: string[] } {
+export function mergeBodySections(current: string, incoming: string): { body: string; replaced: string[]; kept: string[]; added: string[]; dropped: string[] } {
   const now = splitSections(current);
   const next = splitSections(incoming).filter(n => !(n.key.startsWith("text:") && n.text.trim() === ""));
-  const used = new Set<Section>();
-  const replaced: string[] = [], kept: string[] = [], added: string[] = [];
-  const merged: Section[] = now.map(s => {
+  const ambiguous = next.filter(n => now.filter(s => s.key === n.key).length > 1).map(n => `"${n.label}"`);
+  if (ambiguous.length) throw new UsageError(`the PR's current body holds ${[...new Set(ambiguous)].join(", ")} more than once, so the file's copy matches no single section; nothing was posted. Rerun with --replace and the whole body`);
+  const preamble = (list: Section[]) => {
+    const end = list.findIndex(s => s.key.startsWith("h2:"));
+    return list.slice(0, end < 0 ? list.length : end).filter(s => s.key.startsWith("text:") && s.key !== "text:lead" && s.text.trim() !== "");
+  };
+  const firstHeading = next.findIndex(n => n.key.startsWith("h2:"));
+  const managed = firstHeading > 0 && next.slice(0, firstHeading).some(n => n.key === "receipt");
+  const stale = managed ? preamble(now) : [];
+  const ours = managed ? preamble(next) : [];
+  const paired = new Set<Section>([...stale.slice(0, ours.length), ...ours.slice(0, stale.length)]);
+  const used = new Set<Section>(ours);
+  const replaced: string[] = [], kept: string[] = [], added: string[] = [], dropped: string[] = [];
+  const merged: Section[] = [];
+  for (const s of now) {
+    if (stale.includes(s)) {
+      const line = s.text.trim().split(/\r?\n/)[0]!;
+      if (paired.has(s)) replaced.push(s.label);
+      else if (scan(line).findings.length) dropped.push(`${s.label} (first line withheld: the redaction scan flagged it)`);
+      else dropped.push(`${s.label} ("${line.length > 60 ? line.slice(0, 59).trimEnd() + "…" : line}")`);
+      continue;
+    }
     const match = s.key === "unclosed-receipt" ? undefined : next.find(n => !used.has(n) && n.key === s.key);
-    if (!match) { if (s.text.trim()) kept.push(s.label); return s; }
-    used.add(match); replaced.push(s.label); return match;
-  });
+    if (!match) { if (s.text.trim()) kept.push(s.label); merged.push(s); continue; }
+    used.add(match); replaced.push(s.label); merged.push(match);
+  }
   const fresh = next.filter(n => !used.has(n));
-  for (const n of fresh) added.push(n.label);
-  const first = fresh.filter(n => !n.key.startsWith("h2:"));
-  if (now.length === 0) return { body: incoming, replaced, kept, added };
-  const all = [...first, ...merged, ...fresh.filter(n => n.key.startsWith("h2:"))];
+  for (const n of next) if (fresh.includes(n) || (ours.includes(n) && !paired.has(n))) added.push(n.label);
+  const badge = (s: Section) => s.key === "badge:capy-badge";
+  const first = fresh.filter(n => !n.key.startsWith("h2:") && !badge(n));
+  if (now.length === 0) return { body: incoming, replaced, kept, added, dropped };
+  const lead = merged[0]?.key === "text:lead" && merged[0].text.trim() ? 1 : 0;
+  const tail = merged.length && badge(merged.at(-1)!) ? merged.length - 1 : merged.length;
+  const all = [...merged.slice(0, lead), ...first, ...merged.slice(lead, tail), ...fresh.filter(n => n.key.startsWith("h2:")), ...merged.slice(tail), ...fresh.filter(badge)];
+  for (const t of [...ours].reverse()) all.splice(all.indexOf(next[next.indexOf(t) - 1]!) + 1, 0, t);
   const fromFile = (s: Section) => next.includes(s);
   const body = all.map((s, i) => {
     const after = all[i + 1];
@@ -231,7 +291,7 @@ export function mergeBodySections(current: string, incoming: string): { body: st
     const seam = (fromFile(s) || fromFile(after)) && s.text.trim() !== "" && !/^\r?\n/.test(after.text);
     return seam ? s.text.replace(/\n*$/, "\n\n") : s.text.endsWith("\n") ? s.text : s.text + "\n";
   }).join("");
-  return { body, replaced, kept, added };
+  return { body, replaced, kept, added, dropped };
 }
 
 /** The PR's current body for a merge; GitHub's `--jq .body` prints it raw, GitLab's JSON carries `description`. */
@@ -503,7 +563,7 @@ export function runPost(argv: string[], env: PostEnv, configBin = "gstack-config
       const m = mergeBodySections(current.body, body!);
       body = m.body;
       const list = (names: string[]) => (names.length ? names.join(", ") : "none");
-      env.err(`gstack-post: pr-body merged by section: replaced ${list(m.replaced)}; kept ${list(m.kept)}; added ${list(m.added)}\n`);
+      env.err(`gstack-post: pr-body merged by section: replaced ${list(m.replaced)}; kept ${list(m.kept)}; added ${list(m.added)}${m.dropped.length ? `; dropped ${m.dropped.join(", ")}` : ""}\n`);
     }
     if (body !== undefined && req.attribute) body = attributionCallout(req.attribute) + body;
     const parts: Array<[Part, string]> = [];

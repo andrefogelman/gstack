@@ -17,6 +17,7 @@ Homes are paths in the gstack checkout the lane checked at session start.
 | `REQUIRED_CHECKS` | `<check names that must be green at a READY head>` |
 | `FULL_GATE_CHECK` | `<the check the train gate publishes>` |
 | `TRAIN_MAX`, `FILL_HOURS` | `<5>`, `<3>` |
+| `WAVE_TRIGGER` | `<6>` (READY PRs over this run `wave plan` and travel as wave PRs of 3–6) |
 | `MERGE_METHOD` | `<squash \| merge>` |
 | `STAMP_FILES` | `<VERSION, package.json, CHANGELOG.md, …>` |
 | `KNOWN_INFRA_FLAKES` | `<named jobs a lane may rerun once per PR, or none>` |
@@ -60,14 +61,15 @@ Homes are paths in the gstack checkout the lane checked at session start.
 
 6. **Your job ends at an unstamped READY.** Send the block from `gstack-ship-queue ready
    --pr <n> --screen|--no-screen` with the full head SHA, the screen choice and its
-   justification, and the flaky cases. Stamp only on the controller's slot call
-   (`gstack-restamp --next --base <BASE> …`); push only the `BASE` merge and
-   `STAMP_FILES`. Never merge, never enable auto-merge. Home: `docs/captain.md` (The
+   justification, the flaky cases and the `Unverified:` line. Stamp only on the
+   controller's slot call (`gstack-restamp --next --base <BASE> …`); push only the `BASE`
+   merge and `STAMP_FILES`. Never merge, never enable auto-merge. Home: `docs/captain.md` (The
    READY contract), `captain/templates/READY.md`, `captain/templates/slot-call.md`,
    `docs/ship-policy.md` (stamp-at-merge).
 
-7. **Report.** `reports/<your thread code>.md` in the controller's drive: Outcome, PR,
-   Needs, Cost, Lesson, Approvals. Home: `captain/templates/report.md`.
+7. **Report.** `reports/<your thread code>.md` in the controller's drive: Outcome (with
+   its `Unverified:` line), PR, Needs, Cost, Lesson, Approvals. Home:
+   `captain/templates/report.md`.
 
 8. **One path.** Everything goes through `CONTROLLER`, never peer to peer. Home:
    `docs/captain.md` (Roles, Lane discipline).
@@ -90,8 +92,9 @@ Homes are paths in the gstack checkout the lane checked at session start.
 
 14. **Don't merge `BASE` into a READY PR.** Only on the controller's word after a real-code
     train conflict (merge, never rebase, free suite, READY again) or as part of the stamp
-    commit. Home: `docs/captain.md` (Merge trains), `docs/ship-policy.md` (Run a merge
-    train).
+    commit. A merge whose product diff is unchanged carries the /ship receipt; a rebase
+    onto a new tree costs a full /ship. Home: `docs/captain.md` (Merge trains),
+    `docs/ship-policy.md` (Run a merge train, Carrying a receipt).
 
 15. **CHANGELOG entry under `## [Unreleased]` before READY;** version files stay at
     `BASE`'s version; the stamp touches only `STAMP_FILES`. Home: `docs/ship-policy.md`
@@ -132,7 +135,10 @@ Homes are paths in the gstack checkout the lane checked at session start.
     answered into the run and it reports `APPROVED`; record it with `gstack-approvals
     import --autoplan`. New scope taken on part-way gets the same. Exempt: read-only
     lanes, the daily flaky pass's repairs, slot stamps, CHANGELOG-only resolves, cap
-    re-pins under a written grant. Home: `docs/captain.md` (Plan before build),
+    re-pins under a written grant, S1 emergencies (broken install or upgrade, red main,
+    a security bug) and fixes from an already-diagnosed, audited problem list. Any other
+    bug fix is exempt too (`gstack-autoplan next --kind fix`, R65) and carries a repro on
+    current main or a failing test written first in the PR; a feature gets the lean run (`--kind feature`). Home: `docs/captain.md` (Plan before build),
     `captain/templates/brief.md`.
 
 ## Crew-specific rules
