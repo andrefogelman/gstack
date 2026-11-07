@@ -14,7 +14,7 @@
  *                        so a contributor-named file cannot reach the command line
  *
  * fetch marks each record with the false-positive rows that could suppress it: same repo, same
- * bot, matching file. Rows in the old greptile-history.md count as Greptile's.
+ * bot, matching file. Rows in the old pullfrog-history.md count as Pullfrog's.
  * bin/gstack-review-bots is the CLI; tests drive `runReviewBots` with a fake runner.
  */
 import * as fs from "fs";
@@ -36,7 +36,7 @@ export interface ReviewBotsEnv {
 }
 
 export const HISTORY_FILE = "review-bot-history.md";
-export const LEGACY_HISTORY_FILE = "greptile-history.md";
+export const LEGACY_HISTORY_FILE = "pullfrog-history.md";
 export const HISTORY_TYPES = ["fix", "fp", "already-fixed"] as const;
 
 export interface BotComment {
@@ -81,7 +81,7 @@ function historyFiles(env: ReviewBotsEnv, name: string): string[] {
   return [...(id ? [path.join(root, "projects", id, name)] : []), path.join(root, name)];
 }
 
-/** Rows of one history file; a five-column row is Greptile's (the old format). */
+/** Rows of one history file; a five-column row is Pullfrog's (the old format). */
 export function parseHistory(text: string): HistoryRow[] {
   return text.split("\n").flatMap(line => {
     const cells = line.split(" | ").map(c => c.trim());

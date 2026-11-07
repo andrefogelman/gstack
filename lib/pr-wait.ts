@@ -173,7 +173,7 @@ export function parsePrTarget(raw: string | undefined, repo?: string): { repo?: 
   return { repo: resolved, pr };
 }
 
-/** The configured bot that owns a login: the longest name the lowercased login starts with (greptile-apps[bot] is greptile, notgreptile is nobody). Check names keep botOf's first-match rule. */
+/** The configured bot that owns a login: the longest name the lowercased login starts with (pullfrog[bot] is pullfrog, notpullfrog is nobody). Check names keep botOf's first-match rule. */
 export function botOwning(login: string | null | undefined, bots: readonly string[]): string | null {
   const lowered = (login ?? '').toLowerCase();
   if (!lowered) return null;
