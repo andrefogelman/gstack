@@ -1,6 +1,6 @@
 # Review Bot Comment Triage
 
-Shared reference for fetching, filtering and classifying the comments AI review bots leave on a GitHub PR. `/review` (Step 2.5) and `/ship` (Step 10) both use it. The bots are gstack-pr-wait's two lists (`gstack-config set pr_wait_gating_bots …`, `pr_wait_advisory_bots …`; default greptile, macroscope and coderabbit); `pr_wait_advisory_bots` triages a bot without waiting for it, and `none` in both lists turns triage off.
+Shared reference for fetching, filtering and classifying the comments AI review bots leave on a GitHub PR. `/review` (Step 2.5) and `/ship` (Step 10) both use it. The bots are gstack-pr-wait's two lists (`gstack-config set pr_wait_gating_bots …`, `pr_wait_advisory_bots …`; default pullfrog, macroscope and coderabbit); `pr_wait_advisory_bots` triages a bot without waiting for it, and `none` in both lists turns triage off.
 
 ---
 
@@ -203,7 +203,7 @@ It appends one row to the project's `review-bot-history.md` (suppressions) and t
 
 Include a per-bot summary in the output header:
 ```
-+ N review bot comments (greptile: X valid, Y fixed, Z FP; coderabbit: …)
++ N review bot comments (pullfrog: X valid, Y fixed, Z FP; coderabbit: …)
 ```
 
 For each classified comment, show:
