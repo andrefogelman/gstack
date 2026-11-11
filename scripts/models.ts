@@ -45,7 +45,7 @@ export type Model = (typeof ALL_MODEL_NAMES)[number];
  * 2. Family heuristics for common variants:
  *    - `gpt-5.4-mini`, `gpt-5.4-turbo`, `gpt-5.4-*` → `gpt-5.4`
  *    - `gpt-*` (anything else GPT, including other 5.6 variants) → `gpt`
- *    - `o3`, `o4`, `o4-mini`, `o1`, `o1-mini`, `o1-pro` → `o-series`
+ *    - `o4`, `o4-mini`, `o1`, `o1-mini`, `o1-pro` → `o-series`
  *    - Model-pinned Claude families (Opus 4.7, Opus 4.8, Sonnet 5) use an
  *      allowlist: the bare ID (`claude-<family>-<major>`), the bare ID plus
  *      an 8-digit date snapshot (`-YYYYMMDD`), and the bare ID plus `-latest`

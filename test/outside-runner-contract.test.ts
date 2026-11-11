@@ -48,7 +48,8 @@ describe('model family rule', () => {
   test('ids classify by vendor prefix or model name; unknown ids are unknown', () => {
     expect(modelFamily('openai/gpt-6-astra')).toBe('openai');
     expect(modelFamily('gpt-5.4')).toBe('openai');
-    expect(modelFamily('o3-pro')).toBe('openai');
+    expect(modelFamily('gpt-5.6-sol')).toBe('openai');
+    expect(modelFamily('o4-mini')).toBe('openai');
     expect(modelFamily('anthropic/claude-opus-4-7')).toBe('anthropic');
     expect(modelFamily('claude-sonnet-5')).toBe('anthropic');
     expect(modelFamily('google/gemini-3.7-flash')).toBe('google');

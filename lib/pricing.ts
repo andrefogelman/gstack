@@ -68,7 +68,7 @@ export const PRICING: Record<string, ModelPricing> = {
   // the alias only: the gpt-4o-2024-05-13 snapshot has its own price)
   'gpt-4o':             { input_per_mtok: 2.50,  output_per_mtok: 10.00, cached_input_per_mtok: 1.25, as_of: '2026-10' },
   'gpt-5.4-mini':       { input_per_mtok: 0.60,  output_per_mtok: 2.40,  as_of: '2026-04' },
-  'o3':                 { input_per_mtok: 15.00, output_per_mtok: 60.00, as_of: '2026-04' },
+  'gpt-5.6-sol':        { input_per_mtok: 2.00,  output_per_mtok: 10.00, cached_input_per_mtok: 0.10, as_of: '2026-10' },
   'o4-mini':            { input_per_mtok: 1.10,  output_per_mtok: 4.40,  as_of: '2026-04' },
 
   // Google
