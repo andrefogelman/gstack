@@ -46,7 +46,7 @@ export const LIGHT_ADVERSARIAL_REASON = 'backtest inconclusive (GSTA-147 D5)';
 const CLASS_RANK: Record<DiffClass, number> = { docs: 0, tests: 1, code: 2, gate: 3 };
 const DEPTH_RANK: Record<Depth, number> = { light: 0, standard: 1, full: 2 };
 
-const AGENT_PROSE = [/(^|\/)SKILL\.md(\.tmpl)?$/, /(^|\/)sections\//, /^scripts\/resolvers\//, /^docs\/[^/]*-policy\.md$/, /^docs\/(captain|unattended|pregate)\.md$/, /(^|\/)DRIVER\.md(\.tmpl)?$/, /(^|\/)templates\//, /(^|\/)(AGENTS|CLAUDE|ETHOS)\.md$/, /(^|\/)specialists\//, /(^|\/)checklist\.md$/, /^\.gstack\//];
+const AGENT_PROSE = [/(^|\/)SKILL\.md(\.tmpl)?$/, /(^|\/)sections\//, /^scripts\/resolvers\//, /^docs\/[^/]*-policy\.md$/, /^(crew\/)?docs\/(captain|unattended|pregate)\.md$/, /(^|\/)DRIVER\.md(\.tmpl)?$/, /(^|\/)templates\//, /(^|\/)(AGENTS|CLAUDE|ETHOS)\.md$/, /(^|\/)specialists\//, /(^|\/)checklist\.md$/, /^\.gstack\//];
 /** gstack-diff-scope's TEST_PATH_RE (the test-bootstrap rule), plus fixture directories. */
 const TEST_PATH = [/(^|\/)(tests?|spec|__tests__)\/|(^|\/)tests?\.py$|(^|\/)test_[^/]+\.py$|_test\.(go|py|rb|ts|js|exs|dart)$|\.(test|spec)\.[jt]sx?$|_spec\.rb$|Test\.(java|kt)$/, /(^|\/)fixtures?\//];
 const DOC_PATH = /\.(md|mdx|markdown|rst|txt|adoc)$/i;
@@ -57,7 +57,7 @@ const HARNESS_PINS = /^scripts\/harness-pins\//;
 /** Gate paths, the review-depth machinery included: an edit to how much review runs gets the most review. */
 const GATE_PATH = [
   /(^|\/)\.github\/workflows\//, SECRET_PATH, /state-root/, /(^|\/)(pregate|gate|ship-receipt|ship-policy)[^/]*\.(ts|sh|json)$/, /(^|\/)bin\/gstack-(pregate|gate|ship-receipt|verify-gate|ci-gate)$/,
-  /^lib\/review-(depth|collect|scope|targeted|risk|exclude)\.ts$/, /^lib\/redact-(engine|patterns)\.ts$/, /^lib\/default-base\.ts$/, /^review\/specialists\/targeted\.md$/, /^bin\/gstack-review-plan$/, /^lib\/ship-queue[^/]*\.ts$/, /^lib\/regen\.ts$/, /^\.gstack\/(generated|always-run)\.json$/, /^ship\/sections\/(review-army|adversarial)\.md\.tmpl$/, /^scripts\/resolvers\/review-army\.ts$/,
+  /^lib\/review-(depth|collect|scope|targeted|risk|exclude)\.ts$/, /^lib\/redact-(engine|patterns)\.ts$/, /^lib\/default-base\.ts$/, /^review\/specialists\/targeted\.md$/, /^bin\/gstack-review-plan$/, /^(crew\/)?lib\/ship-queue[^/]*\.ts$/, /^lib\/regen\.ts$/, /^\.gstack\/(generated|always-run)\.json$/, /^ship\/sections\/(review-army|adversarial)\.md\.tmpl$/, /^scripts\/resolvers\/review-army\.ts$/,
 ];
 
 /** The path rules lib/review-exclude.ts keeps a matched file for: a gate path, agent prose, or a data-shaped config file. */
@@ -599,7 +599,11 @@ export function planReview(i: PlanInput): ReviewPlan {
       if (firstVoices) add('adversarial-native', 'adversarial', 'full', [], { reason: LIGHT_ADVERSARIAL_REASON });
     } else {
       for (const n of SPECIALISTS.filter(forced)) add('specialist', n, specialist);
-      skipped.push('specialists, red-team and adversarial-native (light depth, runtime 0)');
+      if (cls === 'docs' || dispatches.length) skipped.push('specialists, red-team and adversarial-native (light depth, runtime 0)');
+      else {
+        add('specialist', 'batched', specialist, cls === 'tests' ? docsAndOutputs : [], { checklists: batchChecklists(cls, i, skipped) });
+        skipped.push(`red-team and adversarial-native (light depth, runtime 0: one batched reader reads the ${cls} diff, R51)`);
+      }
     }
     if (h.fullPasses === 0 && i.numbers.publishes) add('outside-voice', 'outside-voice', 'host');
     else if (numbersChanged) add('outside-voice', 'outside-voice (numbers changed)', 'host');
@@ -654,7 +658,9 @@ export function planReview(i: PlanInput): ReviewPlan {
  * R65's lean dispatch (docs/review-policy.md#review-depth): pass 1 runs one native adversarial reader at the lane's reasoning, on
  * review.reader_model (the lane's model by default: FOUN-32, ggstack#52). A risk-class diff under review.panel off gets the merged
  * reader: the gate-class checklists, the Red Team checklist and the targeted brief for its classes; a non-risk code diff gets the
- * code-class checklists and the Red Team. Docs and tests keep the core read. A docs or tests diff with no numeric, results or prereg
+ * code-class checklists and the Red Team. Docs keep the core read; a tests diff, or code with no runtime lines, gets one batched
+ * reader on its class's checklists unless a forced specialist already reads it (R51: tests get one reviewer, so no non-docs pass 1
+ * plans zero readers). A docs or tests diff with no numeric, results or prereg
  * claims, under review.platform on, with the platform review at HEAD, runs no reader at all (mode platform).
  */
 /** Risk class read from the paths and lines (gate class, an R51 or review.risk_paths class, a classifier error), or a floor above light (FOUN-64 item 7: never the recorded review_depth). */
@@ -690,7 +696,9 @@ function leanPlan(i: PlanInput, c: ClassResult, depth: DepthResult, next: NextSt
     reader();
     skipped.push(`specialists, red-team and outside-voice as their own readers (R65: the one ${risky ? 'risk-class' : 'light'} reader carries them)`);
   } else if (next.step === 'full') {
-    for (const n of SPECIALISTS.filter(forcedBy(i))) add('specialist', n, i.tiers === false ? 'host' : ROLE_EFFORT.specialist);
+    const effort: Effort = i.tiers === false ? 'host' : ROLE_EFFORT.specialist;
+    for (const n of SPECIALISTS.filter(forcedBy(i))) add('specialist', n, effort);
+    if (depth.class !== 'docs' && !dispatches.length) add('specialist', 'batched', effort, depth.class === 'tests' ? docsAndOutputs : [], { checklists: batchChecklists(depth.class, i, skipped) });
     if (i.numbers.publishes) add('outside-voice', 'outside-voice', 'host');
     else skipped.push(`outside-voice (${depth.class} class, no numeric claims)`);
   } else if (next.step === 'voices') reader();

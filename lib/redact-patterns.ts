@@ -474,6 +474,29 @@ export function isDeclaredVersion(match: RegExpExecArray): boolean {
   return declaredAt(match.input ?? "", start, end, true);
 }
 
+/**
+ * A quad written to or read from a VERSION file, or set beside a semver (GST-2047): the file's name, alone or ending a
+ * path, or a three-part version (`v1.97.2`, `1.98.0-rc.1`) within a short gap of the quad on the same line
+ * (`path.join(dir, "VERSION"), "1.98.0.0\n"`, `echo 1.98.0.0 > VERSION`, `v1.97.2 to 1.98.0.0`). The gap holds only
+ * quotes, brackets, commas, arrows, spaces, a `\n` escape or the word `to`, so a quad set apart by any other word
+ * (`VERSION bumped; the DNS server 8.8.8.8`, `node 22.11.0 talks to 8.8.8.8`) still reports, and so does a quad
+ * next to another quad. A file named VERSION that holds only the quad is one too; a VERSION file with any other line is
+ * not a whole-file version (#2856), so each of its quads reports.
+ */
+const VERSION_GAP = String.raw`(?:[^A-Za-z0-9\n]|\\[nrt]|\bto\b){0,12}`;
+const VERSION_NEIGHBOUR = String.raw`(?:(?<![\w.-])(?:[\w.-]+\/)*VERSION(?![\w.-])|(?<![\w.])v?\d+\.\d+\.\d+(?:-[0-9A-Za-z.]+)?(?![\w.-]))`;
+const VERSION_NEIGHBOUR_BEFORE = new RegExp(VERSION_NEIGHBOUR + VERSION_GAP + "$");
+const VERSION_NEIGHBOUR_AFTER = new RegExp("^" + VERSION_GAP + VERSION_NEIGHBOUR);
+export function isVersionContext(match: RegExpExecArray, sourcePath?: string): boolean {
+  const input = match.input ?? "";
+  const { start, end } = spanBounds(match);
+  const lineStart = input.lastIndexOf("\n", start - 1) + 1;
+  const lineEnd = input.indexOf("\n", end);
+  const line = input.slice(lineStart, lineEnd < 0 ? input.length : lineEnd);
+  if (sourcePath && /(?:^|[\\/])VERSION$/.test(sourcePath) && input.trim() === input.slice(start, end)) return true;
+  return VERSION_NEIGHBOUR_BEFORE.test(input.slice(Math.max(lineStart, start - 80), start)) || VERSION_NEIGHBOUR_AFTER.test(line.slice(end - lineStart, end - lineStart + 80));
+}
+
 // ── Placeholder suppression (per-matched-span, NOT per-line) ─────────────────
 
 /**
@@ -690,12 +713,43 @@ function urlPasswordIsPlaceholder(span: string): boolean {
 const POSTGRES_LOOPBACK_DEFAULT =
   /^postgres(?:ql)?:\/\/postgres:postgres@(?:localhost|127\.0\.0\.1)(?::\d{1,5})?(?![\w.:@%-])/;
 
-/** A value span that is only an environment-variable read expression (#2912). */
+/**
+ * A value span that is only an environment-variable read expression (#2912):
+ * `process.env.X`, an `env` member of any object chain read by an ALL-CAPS
+ * name (`opts?.env?.AGENT_API_TOKEN`, `import.meta.env.VITE_X`, GST-1894),
+ * or the opening of an indexed or call read (`process.env[`, `os.environ[`,
+ * `os.getenv(`, `System.getenv(`). `env` must be a whole segment, so
+ * `myenv.X` is a value.
+ */
 const ENV_READ_SPAN =
+  /^(?:os\.environ\[|os\.environ\.get\(|(?:[A-Za-z_$][\w$]*\.)?getenv\(|ENV\[|process\.env\.[A-Za-z_$][\w$]*[;,)]?|(?:[A-Za-z_$][\w$]*[!?]?\.)*env(?:[!?]?\.[A-Z_][A-Z0-9_]*[;,)]?|(?:\?\.)?\[))$/;
+/** The reads #2912 exempted before GST-1894; a line with a fallback keeps exactly this exemption. */
+const ENV_READ_SPAN_2912 =
   /^(?:os\.environ\[|os\.environ\.get\(|os\.getenv\(|getenv\(|ENV\[|process\.env\.[A-Za-z_$][\w$]*[;,)]?)$/;
+/** The quoted ALL-CAPS variable name an indexed or call read opens with (`"AGENT_API_TOKEN"]`, `'DB_PASSWORD',`). */
+const ENV_NAME_ARGUMENT = /^(["'])[A-Z_][A-Z0-9_]*\1/;
+/** A fallback or default after the read: `??`, `||`, `or` or a ternary `:`, anywhere on the line. */
+const ENV_READ_FALLBACK = /\?\?|\|\||(?<![\w$])or(?![\w$])|:/;
+/**
+ * The rest of the line is read from the span's end, so a quote the match took
+ * is still seen: a literal fallback (`os.getenv("X", "<secret>")`) or a
+ * literal used as the name (`os.environ["<secret>"]`) keeps the finding.
+ * GST-1894's wider reads (`opts?.env?.X`, `process.env["X"]`,
+ * `System.getenv("X")`) are exempt only when the line holds no fallback, no
+ * second argument, and ends the expression with `;`, `,` or `)`. Any other
+ * line reads exactly as #2912 did, so a fallback after a comment, a blank line
+ * or on the next line is never exempted by the wider reads. The next line is
+ * never read.
+ */
 function isBareEnvRead(span: string, match: RegExpExecArray): boolean {
-  if (!ENV_READ_SPAN.test(span)) return false;
-  return !carriesSecretLiteral(match.input.slice(match.index + match[0].length).split("\n", 1)[0]);
+  const opensArgument = /[[(]$/.test(span);
+  const line = match.input.slice(spanBounds(match).end).split("\n", 1)[0];
+  const rest = opensArgument ? line.replace(ENV_NAME_ARGUMENT, "") : line;
+  if (ENV_READ_FALLBACK.test(rest) || (opensArgument && /^[ \t]*,/.test(rest)))
+    return ENV_READ_SPAN_2912.test(span) && !carriesSecretLiteral(rest);
+  if (!ENV_READ_SPAN.test(span) || carriesSecretLiteral(rest)) return false;
+  const after = opensArgument ? rest.replace(/^[\])]/, "") : rest;
+  return ENV_READ_SPAN_2912.test(span) || /[;,)]$/.test(span) || /^[ \t]*[;,)]/.test(after);
 }
 
 /** True when `text` holds a quoted, non-placeholder, high-entropy literal. */
@@ -733,6 +787,20 @@ function isSchemaFieldIdentifier(span: string, match: RegExpExecArray): boolean 
   return SCHEMA_FIELD_NAME.test(match[0]) && SCHEMA_FIELD_VALUE.test(span);
 }
 /**
+ * GST-1894: in a test file, a value made only of lowercase words joined by `-`
+ * or `_`, one of them a credential word (`personal-secret`,
+ * `staging-api-key`), is a fixture label that says what it stands for.
+ * Decided by the file name (`*.test.ts`, `*.spec.tsx`, `test_*.py`,
+ * `*_test.go`). Outside a test file, without a path, or with a digit, an
+ * uppercase letter or no credential word, the value is checked as before.
+ */
+const TEST_SOURCE = /(?:^|[\\/])(?:[^\\/]+(?:\.test|\.spec|_test)\.(?:[cm]?[jt]sx?|py|go|rb|dart)|test_[^\\/]+\.py)$/;
+const FIXTURE_LABEL = /^[a-z]+(?:[-_][a-z]+)+$/;
+const FIXTURE_CREDENTIAL_WORD = /(?:^|[-_])(?:secret|token|password|passwd|key|credential)s?(?:[-_]|$)/;
+function isTestFixtureLabel(span: string, sourcePath: string | undefined): boolean {
+  return !!sourcePath && TEST_SOURCE.test(sourcePath) && FIXTURE_LABEL.test(span) && FIXTURE_CREDENTIAL_WORD.test(span);
+}
+/**
  * GST-1064: the first argument of a lookup call (`get`, `getenv`, `read`,
  * `load`, `loads`, `open`, `pop`, `fetch`) that is a lowercase file name
  * (`files.get("key.json")`) or a snake_case key of two or three words
@@ -764,8 +832,9 @@ function isCallExpression(span: string, match: RegExpExecArray): boolean {
  * `API_KEY=VelvetRiverOrbitSunset;` in a .env or YAML file is still a literal.
  * #3630 (#3418, #3419): Dart and Python (.py, .pyi) qualify on the same grammar
  * fact, no unquoted string literal, so `'password': request.password` and
- * `session: HttpSession,` are names. Python's `=` forms
- * (`password=request.password`) still fire: the separator must be `:`.
+ * `session: HttpSession,` are names. Python's keyword form
+ * (`password=request.password,`) still fires: the separator must be `:`. A
+ * plain `=` assignment of a dotted name is isAttributeReference's (#4209).
  * Without a known source path nothing is exempt.
  */
 const CODE_SOURCE = /\.(?:[cm]?tsx?|jsx|dart|pyi?)$/i;
@@ -1015,6 +1084,30 @@ function isSourceExpression(span: string, match: RegExpExecArray, sourcePath: st
       if (tail === null || carriesSecretLiteral(tail)) return false;
     }
   }
+  return !insideString(match.input, start, sourcePath);
+}
+
+/**
+ * #4209: in Python and Dart source, an unquoted dotted name chain that is the
+ * whole right-hand side of an `=` assignment (`session = self.client.session`,
+ * `token = request.auth`) reads an attribute; it holds no credential. Only
+ * Python and Dart, where the whole file's strings are known (insideString), so
+ * the same line inside a `"""`/`'''` block still reports. Every segment must be
+ * name-shaped (snake_case, camelCase, PascalCase or CONSTANT_CASE), so a dotted
+ * random token still reports, and only a `;` and a comment may follow it on
+ * the line: a literal after it (`or "…"`, `, "…"`), a continuation or a
+ * keyword argument's comma still reports. A quoted value, a bare name, a
+ * config, .env or TS file, and a scan without a path are unchanged.
+ */
+const ATTRIBUTE_SEGMENT = /^_*(?:[a-z][a-z0-9]*(?:_+[a-z0-9]+)*|[A-Z][A-Z0-9]*(?:_+[A-Z0-9]+)*|[A-Za-z][a-z0-9]*(?:[A-Z][a-z0-9]+)*)_*$/;
+function isAttributeReference(span: string, match: RegExpExecArray, sourcePath: string | undefined): boolean {
+  if (!sourcePath || !STRING_SPAN_SOURCE.test(sourcePath)) return false;
+  const chain = span.replace(/;$/, "").split(".");
+  if (chain.length < 2 || !chain.every((segment) => ATTRIBUTE_SEGMENT.test(segment))) return false;
+  const { start, end } = spanBounds(match);
+  if (!/=[ \t]*$/.test(match.input.slice(match.index, start))) return false;
+  const rest = match.input.slice(end).split("\n", 1)[0];
+  if (!(/\.dart$/i.test(sourcePath) ? /^[ \t]*(?:\/\/.*)?\r?$/ : /^[ \t]*(?:#.*)?\r?$/).test(rest)) return false;
   return !insideString(match.input, start, sourcePath);
 }
 
@@ -1481,7 +1574,9 @@ export const PATTERNS: RedactPattern[] = [
     // itself (`process.env.X||"…"`) is not an exact read and still fires.
     // #2899: a function call assigned to the name is code, not a value (see
     // isCallExpression). #3048, #3630: so is a TS/JSX/Dart/Python type or expression (isSourceExpression).
+    // #4209: so is a dotted attribute read assigned with = in Python or Dart (isAttributeReference).
     // #3208: so is a schema field identifier (isSchemaFieldIdentifier).
+    // GST-1894: so is a self-named fixture label in a test file (isTestFixtureLabel).
     validate: (span, match, opts) =>
       isCredentialShapedEnvName(match[0]) &&
       !isPlaceholderSpan(span) &&
@@ -1489,7 +1584,9 @@ export const PATTERNS: RedactPattern[] = [
       !isBareEnvRead(span, match) &&
       !isCallExpression(span, match) &&
       !isSourceExpression(span, match, opts?.sourcePath) &&
+      !isAttributeReference(span, match, opts?.sourcePath) &&
       !isSchemaFieldIdentifier(span, match) &&
+      !isTestFixtureLabel(span, opts?.sourcePath) &&
       shannonEntropy(span) >= 3.0,
   },
   {
@@ -1583,7 +1680,7 @@ export const PATTERNS: RedactPattern[] = [
     category: "pii",
     description: "Public IPv4 address",
     regex: /\b(\d{1,3}\.\d{1,3}\.\d{1,3}\.\d{1,3})\b/,
-    validate: (span, match) => isPublicIPv4(span) && !isDeclaredVersion(match),
+    validate: (span, match, opts) => isPublicIPv4(span) && !isDeclaredVersion(match) && !isVersionContext(match, opts?.sourcePath),
   },
   {
     id: "pii.wallet",

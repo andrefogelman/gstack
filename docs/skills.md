@@ -32,7 +32,7 @@ Detailed guides for every gstack skill — philosophy, workflow, and examples.
 | [`/retro`](#retro) | **Eng Manager** | Team-aware weekly retro. Per-person breakdowns, shipping streaks, test health trends, growth opportunities. |
 | [`/browse`](#browse) | **QA Engineer** | Give the agent eyes. Drives your Aside browser first — real sessions, real clicks, real screenshots — through deterministic `aside repl` scripts, and falls back to gstack's own Chromium (~100ms per command) when Aside isn't there. |
 | [`/setup-browser-cookies`](#setup-browser-cookies) | **Session Manager** | Copy selected cookies from Chrome, Chromium, Brave, Edge, Windows-only Opera and Opera GX, or macOS-only Comet and Arc into the fallback browser. Choose your profile and domains; check sign-in separately. Unnecessary on Aside, which already has your sessions. |
-| [`/autoplan`](#autoplan) | **Review Pipeline** | One command, fully reviewed plan. Runs CEO → design → DX → eng review automatically (eng always last, so the shipping gate reviews the final amended plan) with encoded decision principles. Surfaces only taste decisions for your approval. |
+| [`/autoplan`](#autoplan) | **Review Pipeline** | One command, reviewed plan. In an interactive session it runs CEO → design → DX → eng review from each skill's own method (eng always last, so the shipping gate reviews the final amended plan) with encoded decision principles, and surfaces only taste decisions for your approval. A run driven by `gstack-autoplan` (the Capy default) gives its reviewers short checklists instead of those methods: the lean run is one reviewer, `--full` one per phase ([what each run loads](#what-each-run-loads)). |
 | [`/plan-devex-review`](#plan-devex-review) | **DX Reviewer** | Plan-stage DX review. TTHW (time-to-hello-world), magical moments, friction points, persona traces, and error messages scored for the agents that read them ([agent-ready errors](agent-ready-errors.md)). Three modes: Expansion, Polish, Triage. |
 | [`/devex-review`](#devex-review) | **DX Reviewer (live)** | Live developer experience audit. Walks the actual onboarding flow, measures TTHW, catches the docs lies, and triggers CLI errors the way an agent meets them (no terminal, contained, redacted) through `gstack-error-capture`. |
 | [`/plan-tune`](#plan-tune) | **Question Tuner** | Self-tune AskUserQuestion sensitivity per question. Mark questions as never-ask, always-ask, or only-for-one-way. |
@@ -45,7 +45,7 @@ Detailed guides for every gstack skill — philosophy, workflow, and examples.
 | [`/write-skill`](#write-skill) | **Skill Editor** | Write or improve an agent skill without bloat: edit ladder, size per level, skill-to-bin drift check, full diets with a before/after test. |
 | [`/test-audit`](#test-audit) | **Test Auditor** | Sweep existing tests for low-value, implementation-coupled or duplicate tests. Report-only unless you approve a batch. |
 | [`/landing-report`](#landing-report) | **Ship Queue Dashboard** | Read-only snapshot of the workspace-aware ship queue. Which version slots are claimed, which sibling workspaces have WIP. |
-| [`/captain`](#captain) | **Crew Controller** | Run many coding agents from one controller. Lanes build and send a READY block; the controller validates it, merges through trains (stamp on call, verify, merge with the expected head, verify again; `train land` per slot under `changelog_fragments`), keeps the digest, relays approvals in three fixed shapes and runs a daily flaky-fix pass. Also answers to `/crew`. |
+| [`/captain`](#captain) | **Crew Controller** (Capy only: [crew/](../crew/README.md)) | Run many coding agents from one controller. Lanes build and send a READY block; the controller validates it, merges through trains (stamp on call, verify, merge with the expected head, verify again; `train land` per slot under `changelog_fragments`), keeps the digest, relays approvals in three fixed shapes and runs a daily flaky-fix pass. Also answers to `/crew`. |
 | [`/benchmark-models`](#benchmark-models) | **Model Benchmark** | Side-by-side cross-model benchmark for skills (Claude vs GPT vs Gemini, plus particle-1 and DeepSeek V4.1 Flash through OpenRouter). Latency, tokens, cost, optional LLM-judged quality. |
 | [`/eval-plan`](#eval-plan) | **Eval Planner** | Preregister a paid eval (bars, arms, decoys, stop rules), dry-run it for $0 with the stub model, pilot three priced items, then approve the spend from the extrapolation table. |
 | | | |
@@ -187,7 +187,7 @@ Visions and decisions are persisted to `~/.gstack/projects/` so they survive bey
 
 `/plan-eng-review` was cut on 2026-11-06 (GST-1698) after two evals found no gain. In the seeded-flaw panel, plain Opus 5.5 with no gstack found the planted engineering flaws in 15 of 16 reviews. In the wave 1 outcome test, plain Opus 5.5 built 22 of 22 planned features correctly, and a session told to use the skill cost 7.1 times a plain one. The evidence is in GST-1218 and gstack-evals#253.
 
-The standalone skill no longer installs, and `./setup` removes an existing gstack-owned `/plan-eng-review` entry on every host. Its review methodology stays as `/autoplan`'s eng phase (Phase 3), unchanged. To review a plan's architecture, data flow, edge cases and tests, run `/autoplan`. `/review` covers the diff before `/ship`.
+The standalone skill no longer installs, and `./setup` removes an existing gstack-owned `/plan-eng-review` entry on every host. Its review methodology stays as `/autoplan`'s eng phase (Phase 3), unchanged, in an interactive session. A run driven by `gstack-autoplan` (the Capy default) gives its reviewer only the skill's 36-line checklist, not the methodology. To review a plan's architecture, data flow, edge cases and tests, run `/autoplan`. `/review` covers the diff before `/ship`.
 
 ### Review Readiness Dashboard
 
@@ -364,6 +364,8 @@ This is my **designer who codes mode**.
 `/plan-design-review` reviews your plan before implementation. `/design-review` audits and fixes the live site after.
 
 It runs an 80-item visual audit on your live site — in your Aside browser, so it sees exactly what a logged-in you sees — then enters a fix loop: for each design finding, it locates the source file, makes the minimal CSS/styling change, commits with `style(design): FINDING-NNN`, re-navigates to verify, and takes before/after screenshots. One commit per fix, fully bisectable.
+
+**`--build` (opt-in, for UI you are building).** `/design-review --build <preview url>` skips the clean-tree check and never commits: it lists the states your change can show, serves them on a loopback preview with canned API answers ([preview recipe](howto-preview-a-frontend.md)), lints each one with `gstack-design-lint --scope app` at 1440 and 375, screenshots them, fixes what fails for up to three rounds, then runs one read-only final pass. `gstack-design-build` turns that evidence into one `DESIGN_BUILD:` line (clean, waived, open, incomplete or unrendered); a skipped render, a state it could not reach or an API call the preview could not answer is never clean.
 
 The self-regulation heuristic is tuned for design work — CSS-only changes get a free pass (they are inherently safe and reversible), but changes to component JSX/TSX files count against the risk budget. Hard cap at 30 fixes. If the risk score exceeds 20%, it stops and asks.
 
@@ -698,14 +700,14 @@ A lot of branches die when the interesting work is done and only the boring rele
 
 ### The PR body
 
-`/ship` writes the PR body from the diff, the receipt and the review, and a reader who was not in the session decides the merge from it. On Capy (`CAPY_PR: on`) the body opens with four sections, in this order, before the standard Summary, Test plan and Documentation sections:
+`/ship` writes the PR body from the diff, the receipt and the review, and a reader who was not in the session decides the merge from it. The front is for people and the end is for machines: the body opens with one or two plain sentences saying what changed for someone using the project and which README goal it serves, and it ends with one collapsed **Agent notes** section (`<!-- gstack:agent-notes -->` then `<details><summary>Agent notes</summary>`) that holds the ship receipt, the approval and Plan lines, issue codes and the review-loop lines gstack's tools read. The title follows the same shape: plain words first, an issue code only at the end (`Stop gstack from hitting GitHub's rate limit while it waits on PRs (GST-1713)`), checked by `gstack-plain-title` (see [Plain titles](ship-policy.md#plain-titles)). On Capy (`CAPY_PR: on`) the opening is followed by three sections, in this order, before the standard Summary, Test plan and Documentation sections:
 
 1. **`## What changed`**: one to three captioned before/after images from `gstack-pr-shots` or a UI screenshot, highest-signal first, with a collapsed text version under each.
 2. **`## Why`**: two or three sentences. The first states the problem in the person's words (the issue, the message, the failing run), then the cause and the user-visible effect.
 3. **`## Blast radius`**: what else the change touches and the one fact that makes that safe, with the evidence-ladder rung that fact reached (a test that exercises the shared path, a grep over every caller, a measured run). A change to a shared helper, a generated file, a selection list or a policy default always has one; a leaf fix says so in one line.
-4. **`## Approvals`**: the output of `gstack-approvals render`, verbatim. On a private repository that is the table; on a public repository, or one whose visibility gh cannot read, it is only `Approved: yes|no (record <id>)`, because GitHub keeps every earlier version of a PR description.
+`## Approvals`, the output of `gstack-approvals render` verbatim, goes inside Agent notes. On a private repository that is the table; on a public repository, or one whose visibility gh cannot read, it is only `Approved: yes|no (record <id>)`, because GitHub keeps every earlier version of a PR description. The table shows each local path in Asked, Covers and Still pending as `…/<file name>`, so the home directory, user name and Drive folder in those paths stay out of the body; Exact words stays verbatim, and `gstack-approvals list` keeps the full path. For a private repository that may go public, `render --redacted` prints the public form, byte for byte; `--redacted` with `--full` is refused.
 
-Before the body is composed, `gstack-prose-lint` reads the Why, Summary and Blast radius drafts (`--sections 'Why,Summary,Blast radius' --gate`) and the CHANGELOG entry (`--base origin/<base> --gate`), and a `PROSE_LINT_FOUND` line names the sentence to rewrite; the rest of the body is advisory. The Captain's merge-ask template (`captain/templates/merge-ask.md`) carries the same four sections, so a READY report and its PR say the same thing.
+Before the body is composed, `gstack-prose-lint` reads the Why, Summary and Blast radius drafts (`--sections 'Why,Summary,Blast radius' --gate`) and the CHANGELOG entry (`--base origin/<base> --gate`), and a `PROSE_LINT_FOUND` line names the sentence to rewrite; the rest of the body is advisory. The Captain's merge-ask template (`captain/templates/merge-ask.md`) carries the same sections, so a READY report and its PR say the same thing.
 
 ### Versions: where `/ship` looks, and when it ships without one
 
@@ -966,16 +968,20 @@ sets the defaults that keep it from coming back.
 
 - **Detect.** One program fetches each crew thread (`tools.thread.get`, with its transcript) to files, then
   `gstack-runaway scan --dir <dir>` prints a `RUNAWAY:` line per thread and a `FLAG:` line per limit crossed:
-  own tokens past 500M or active past 3 days (rotate), a subagent past 100M (stop), empty wakes past 25% of the
+  own tokens past 500M or active past 3 days (rotate, for a standing thread that wakes on every event; a crew
+  thread keeps its PR until it merges or closes and checks in with its Captain once past 1B, and no thread holding an
+  open PR rotates), a subagent past 100M (stop), empty wakes past 25% of the
   last 40 turns (warm-wait check-ins are left out), and review rounds past 2 per PR. Captains are reported, never rotated.
-- **Stop.** A live subagent past 100M is stopped with its reason. A thread is rotated at a clean point through
-  a handoff file and a successor brief (`runaway-stopper/templates/`), then archived by its own Captain. A thread
+- **Stop.** A live subagent past 100M is stopped with its reason. A standing thread is rotated at a clean point through
+  a handoff file and a successor brief (`runaway-stopper/templates/`), then archived by its own Captain once none of
+  its PRs is open (R91), through `gstack-archive-check thread`. A thread
   mid-/ship or mid-merge gets `DEFER:` and nothing happens until that work finishes.
 - **Prevent.** One wait on all pending operations, quiet wakes, compact program returns, one /ship subagent per
   PR head (metering its own row with a 100M default cap, `BUDGET_DEFAULT_CAP:`), two review rounds, and a fresh
   thread per automation run.
 
-Scanning FOUN-4, FOUN-14 and FOUN-71 as read on 2026-11-03 (excerpt):
+Scanning FOUN-4, FOUN-14 and FOUN-71 as read on 2026-11-03, before R70's 2026-11-09 amendment (today only a thread
+marked standing gets `ROTATE`, a crew thread past 1B gets `CHECK_IN`, and a thread holding an open PR never rotates) (excerpt):
 
 ```
 RUNAWAY: thread=FOUN-4 verdict=ROTATE own=4.04B(upper) total=6.90B credits=2299398 age_days=13.1 active=yes ...
@@ -1239,7 +1245,7 @@ This is my **review autopilot mode**.
 
 Running `/plan-ceo-review`, `/plan-design-review` and `/plan-devex-review` individually means answering 15-30 intermediate questions. Each question is valuable, but sometimes you want the gauntlet to run without stopping for every decision.
 
-`/autoplan` reads the review skills from disk and runs them sequentially: CEO → Design (if UI scope) → DX (if developer-facing scope) → Eng, always last — the required shipping gate reviews the final amended plan, not a stale one. It makes decisions automatically: each question resolves to its recommended option by default, with six encoded principles (prefer completeness, match existing patterns, choose reversible options, prefer the option the user chose for similar past decisions, defer ambiguous items, and escalate security) breaking ties and deciding questions that carry no recommendation. Taste decisions (close approaches, borderline scope expansions, cross-model disagreements) get saved and presented at a final approval gate.
+In an interactive session, `/autoplan` reads the review skills from disk and runs them sequentially: CEO → Design (if UI scope) → DX (if developer-facing scope) → Eng, always last — the required shipping gate reviews the final amended plan, not a stale one. It makes decisions automatically: each question resolves to its recommended option by default, with six encoded principles (prefer completeness, match existing patterns, choose reversible options, prefer the option the user chose for similar past decisions, defer ambiguous items, and escalate security) breaking ties and deciding questions that carry no recommendation. Taste decisions (close approaches, borderline scope expansions, cross-model disagreements) get saved and presented at a final approval gate.
 
 One command, fully reviewed plan out.
 
@@ -1260,6 +1266,16 @@ You:    1) Yes, add search. 2) Option A.
 
 Claude: Plan complete. 9 decisions auto-resolved, 2 taste decisions approved.
 ```
+
+### What each run loads
+
+How deep the review goes depends on who drives the run.
+
+- **Interactive session** (no parent agent): the session model reads each phase's review skill, its SKILL.md and review sections, and works through that method itself. Each phase also sends the plan to a native reviewer subagent, which gets a five-question brief but not the skill, and to an outside voice from another model family (Codex) when one is available.
+- **Lean run** (`--kind feature`, the default for an unattended run on Capy): one engineering reviewer and nothing else. Its prompt holds the five-question eng brief, the 36-line eng checklist (unattended or `--light` runs only), a one-paragraph CEO role with the 37-line CEO checklist, the 28-line design and 34-line DX checklists only when scope detects UI or developer-facing work, and the draft code. It does not run the CEO, design or DX skills' own methods. There is no outside voice and one round.
+- **Full run** (`--full`, and the default for an unattended run off Capy): a phase per area, CEO → design → DX → eng, each with two voices. The native reviewer gets the five-question brief, the plan and, in an unattended or `--light` run, that phase's checklist; the outside reviewer gets a one-paragraph role and the plan. Neither gets the review skill's own method.
+
+The lean and full kinds are runs a parent agent drives through `gstack-autoplan` ([autoplan/DRIVER.md](../autoplan/DRIVER.md), [unattended.md](unattended.md)). An interactive session that sees `SESSION_KIND: unattended` hands off to the same runner.
 
 ---
 
@@ -1356,7 +1372,7 @@ selection. See [model policy](model-policy.md) for pins, precedence and recovery
 
 ### Three modes
 
-**Review** — run `codex review` against the current diff. Codex reads every changed file, classifies findings by severity (P1 critical, P2 high, P3 medium), and returns a PASS/FAIL verdict. Any P1 finding = FAIL. The review is fully independent — Codex doesn't see Claude's review.
+**Review** — send the current diff to Codex through `codex exec` with gstack's review prompt (the built-in `codex review --base` takes no prompt). Codex reads every changed file, classifies findings by severity (P1 critical, P2 high, P3 medium), and returns a PASS/FAIL verdict. Any P1 finding = FAIL. The review is fully independent — Codex doesn't see Claude's review.
 
 A severity-gate PASS is separate from [review freshness](#review-readiness-dashboard): unresolved recorded findings (`findings > findings_fixed`, with missing `findings_fixed` treated as zero) prevent CURRENT even when the gate passes. This does not change the severity gate. Fixes still require a new completed, unchanged review pass before the fixed tree can grade CURRENT.
 
@@ -1458,7 +1474,7 @@ Remove the `/freeze` boundary, allowing edits everywhere again. The hooks stay r
 
 One controller, many lanes. `/captain` (also `/crew`) teaches a coordinating agent the
 operating model that keeps dozens of worker threads merging into one base branch without
-turning it red.
+turning it red. `./setup` installs it only on a Capy machine; see [crew/README.md](../crew/README.md).
 
 ```text
 You: /captain
@@ -1487,7 +1503,7 @@ id in the READY), the skill ships both as options for the crew rules file.
 
 Templates (CREW.md, AGENTS.md, NOTES.md, DIGEST.md, the flaky ledger, the lane report,
 the READY block, the slot call, the lane brief, the plan and merge asks, the daily automation prompt)
-live in `captain/templates/`; the team setup guide for Capy is [docs/captain.md](captain.md).
+live in `captain/templates/`; the team setup guide for Capy is [crew/docs/captain.md](../crew/docs/captain.md).
 
 ## `/gstack-upgrade`
 

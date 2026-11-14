@@ -137,8 +137,11 @@ there is refused with the usual `--for <skill>` fix.
    trailer: `behind=<n> (latest: <ver>); fix: <command>` (see the trailer
    grammar below).
    **Daily (R75).** When the oldest origin commit the checkout lacks is more
-   than 24 hours old, the trailer adds `stale=<h>h` after `behind=`, and
-   unlike a bare `behind=` the agent runs the fix before the first workflow.
+   than 24 hours old, the trailer adds `stale=<h>h` after `behind=`. Either
+   way the agent runs the fix before the next workflow: `behind=1` or more
+   always calls for it, and `stale=` adds that a pin with no recorded reason
+   no longer holds. A `fix:` that starts `unset GSTACK_CAPY_` lifts a pin:
+   skip it while the pin has a recorded reason.
    A pin (`GSTACK_CAPY_SELF_UPGRADE=off`, `GSTACK_CAPY_AUTO_UPGRADE=0`, a
    detached HEAD or another branch) then holds only with a recorded reason:
    `GSTACK_PIN_REASON=<why>`, `git -C <root> config gstack.pinReason <why>`,
@@ -525,6 +528,10 @@ GSTACK_LAUNCH_FILE: <verdict file without .json>.env
 The file also appends the checkout's `bin/` directory to PATH, after everything
 already there and only once, so a shell that sourced only this file runs a bare
 `gstack-ship-budget` (GSTA-167: a /ship child got `command not found`, exit 127).
+Then it appends `crew/bin/` the same way, so the crew commands that live there
+(`gstack-release-gate`, `gstack-coauthor-trailers`; see crew/README.md) keep
+their bare names on Capy. Nothing outside this launch file puts `crew/bin/` on
+PATH, so a non-Capy install never sees them.
 When the session starts from the Drive skill (a bootstrapper outside the
 checkout), the file also exports `GSTACK_PREFERENCES_FILE`, the path of
 `preferences.yaml` beside that skill's SKILL.md, which the `GSTACK_LAUNCH` line
@@ -632,7 +639,7 @@ them). The guide is
 `GSTACK_CAPY_ASKS=0` drops the block for one session. The controller's side (the
 READY contract, merge trains, the digest, the daily flaky pass, with templates for the
 crew rules file and the Captain's drive) is the `/captain` skill and
-[captain.md](captain.md).
+[captain.md](../crew/docs/captain.md).
 
 ## Raising the supported minimum
 

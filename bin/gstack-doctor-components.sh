@@ -262,6 +262,7 @@ gstack_result_anchor() {
     STABLE_RELEASE_UNKNOWN) printf '%s' 'stable-release-unknown' ;;
     PREGATE_GSTACK_TOO_OLD) printf '%s' 'pregate-gstack-too-old' ;;
     QUEUE_NOT_READY) printf '%s' 'queue-not-ready' ;;
+    QUEUE_BASE_UNFETCHED) printf '%s' 'queue-base-unfetched' ;;
     QUEUE_PROOF_MISSING) printf '%s' 'queue-proof-missing' ;;
     QUEUE_STAMP_NOT_STAMP_ONLY) printf '%s' 'queue-stamp-not-stamp-only' ;;
     QUEUE_VERIFY_MISMATCH) printf '%s' 'queue-verify-mismatch' ;;
@@ -303,6 +304,7 @@ gstack_result_anchor() {
     QUEUE_RECEIPT_MISSING) printf '%s' 'queue-receipt-missing' ;;
     QUEUE_RECEIPT_STALE) printf '%s' 'queue-receipt-stale' ;;
     QUEUE_RECEIPT_CONDITIONAL) printf '%s' 'queue-receipt-conditional' ;;
+    QUEUE_RECEIPT_BASE_MISMATCH) printf '%s' 'queue-receipt-base-mismatch' ;;
     BASE_RED_UNCONFIGURED) printf '%s' 'base-red-unconfigured' ;;
     BASE_RED_UNNAMED) printf '%s' 'base-red-unnamed' ;;
     BASE_RED_REPRO_ERROR) printf '%s' 'base-red-repro-error' ;;
@@ -316,6 +318,7 @@ gstack_result_anchor() {
     QUEUE_SCREEN_NOT_RUN) printf '%s' 'queue-screen-not-run' ;;
     QUEUE_TRAIN_STACK_RED) printf '%s' 'queue-train-stack-red' ;;
     QUEUE_POST_MERGE_RED) printf '%s' 'queue-post-merge-red' ;;
+    QUEUE_READY_NOTE_UNPUSHED) printf '%s' 'queue-ready-note-unpushed' ;;
     QUEUE_SCREEN_RED) printf '%s' 'queue-screen-red' ;;
     READY_SCREEN_CHOICE_REQUIRED) printf '%s' 'ready-screen-choice-required' ;;
     PREGATE_TIMING_ASSERTION) printf '%s' 'pregate-timing-assertion' ;;
@@ -338,6 +341,7 @@ gstack_result_anchor() {
     RECEIPT_CARRY_PRODUCT_CHANGED) printf '%s' 'receipt-carry-product-changed' ;;
     RECEIPT_CARRY_SCOPED_REVIEW) printf '%s' 'receipt-carry-scoped-review' ;;
     DOCS_AUDIT_BLOCKED) printf '%s' 'docs-audit-blocked' ;;
+    DOCS_RESULT_INVALID) printf '%s' 'docs-result-invalid' ;;
     RECEIPT_PROSE_MISMATCH) printf '%s' 'receipt-prose-mismatch' ;;
     RECEIPT_CARRY_PREGATE_STALE) printf '%s' 'receipt-carry-pregate-stale' ;;
     RECEIPT_GIT_TOO_OLD) printf '%s' 'receipt-git-too-old' ;;
@@ -351,6 +355,7 @@ gstack_result_anchor() {
     QUEUE_LAND_BASE_BUSY) printf '%s' 'queue-land-base-busy' ;;
     QUEUE_LAND_STAMPED) printf '%s' 'queue-land-stamped' ;;
     QUEUE_LAND_PIN_MOVED) printf '%s' 'queue-land-pin-moved' ;;
+    QUEUE_GATE_DISPOSITION) printf '%s' 'queue-gate-disposition' ;;
     QUEUE_LAND_CHECKS) printf '%s' 'queue-land-checks' ;;
     QUEUE_LAND_MERGED_CHECKS) printf '%s' 'queue-land-merged-checks' ;;
     QUEUE_LAND_NOT_CLEAN) printf '%s' 'queue-land-not-clean' ;;
@@ -389,6 +394,13 @@ gstack_result_anchor() {
     PLAN_EXEMPT_UNKNOWN) printf '%s' 'plan-exempt-unknown' ;;
     PLAN_STORE_UNAVAILABLE) printf '%s' 'plan-store-unavailable' ;;
     QUEUE_PLAN_MISMATCH) printf '%s' 'queue-plan-mismatch' ;;
+    ARCHIVE_READS_STALE) printf '%s' 'archive-reads-stale' ;;
+    ARCHIVE_READS_UNPARSED) printf '%s' 'archive-reads-unparsed' ;;
+    ARCHIVE_THREAD_MISMATCH) printf '%s' 'archive-thread-mismatch' ;;
+    ARCHIVE_PR_NOT_MERGED) printf '%s' 'archive-pr-not-merged' ;;
+    ARCHIVE_GH_READ_FAILED) printf '%s' 'archive-gh-read-failed' ;;
+    ARCHIVE_PR_STATE_UNKNOWN) printf '%s' 'archive-pr-state-unknown' ;;
+    ARCHIVE_POLICY_UNREADABLE) printf '%s' 'archive-policy-unreadable' ;;
     BUDGET_CAP_REACHED) printf '%s' 'budget-cap-reached' ;;
     BUDGET_READING_MISSING) printf '%s' 'budget-reading-missing' ;;
     METER_SCOPE_PARENT) printf '%s' 'meter-scope-parent' ;;
@@ -422,6 +434,12 @@ gstack_result_anchor() {
     GSTACK_CLEAN_TARGET_REFUSED) printf '%s' 'gstack-clean-target-refused' ;;
     GSTACK_CLEAN_PARTIAL) printf '%s' 'gstack-clean-partial' ;;
     GSTACK_CLEAN_INTERNAL) printf '%s' 'gstack-clean-internal' ;;
+    PLAIN_TITLE_REFUSED) printf '%s' 'plain-title-refused' ;;
+    PLAIN_BRANCH_REFUSED) printf '%s' 'plain-branch-refused' ;;
+    PLAIN_OPENING_REFUSED) printf '%s' 'plain-opening-refused' ;;
+    PLAIN_CHANGELOG_REFUSED) printf '%s' 'plain-changelog-refused' ;;
+    PLAIN_COMMIT_REFUSED) printf '%s' 'plain-commit-refused' ;;
+    PLAIN_POLICY_INVALID) printf '%s' 'plain-policy-invalid' ;;
     *) return 1 ;;
   esac
 }

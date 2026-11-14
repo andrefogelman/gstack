@@ -23,7 +23,7 @@ release.
 
 Every day at 14:00 UTC (07:00 Pacific, 06:00 in winter) the **Stable
 release** workflow (`.github/workflows/weekly-release.yml`, which runs
-`scripts/release-cut.ts --daily`; the file kept its old name so its run
+`crew/scripts/release-cut.ts --daily`; the file kept its old name so its run
 history and the `gh workflow run` commands below stay valid) runs the daily
 check. On Monday and Thursday that is the regular cut; on any day an important
 change or a week-old stable can trigger one. A cut takes the newest green
@@ -46,7 +46,13 @@ regression fix (below).
 it has completed and none failed, and `refs/notes/gstack-trains` holds no
 active freeze. A cancelled check run counts as red. A commit with a check run
 still going is skipped and the next older one is considered, back through 7
-days or 200 first-parent commits. The workflow runs no tests and no paid evals
+days or 200 first-parent commits. The cut's own job lands a check run on
+main's head, the very commit it may cut, so check runs from this workflow's
+own runs (its file path, `.github/workflows/weekly-release.yml`, matched
+by the job ids of those workflow runs) are set aside whether running or
+failed; every other check run counts as above. The lookup needs the
+workflow's `actions: read` permission; when it cannot read those runs, nothing
+is set aside. The workflow runs no tests and no paid evals
 of its own; it only reads what the trains, the backstop and the release gate
 already recorded.
 With nothing green in the window it fails and lists why each commit was
@@ -93,8 +99,8 @@ tag before it.
 
 Garry, 2026-11-06 (R74): "make sure anything important makes it to stable as
 frequently as once a day and as infrequently as once a week". Every scheduled
-run is the daily check (`scripts/release-cut.ts --daily`, decision logic in
-`scripts/release-cadence.ts`). It picks the candidate exactly as any cut does
+run is the daily check (`crew/scripts/release-cut.ts --daily`, decision logic in
+`crew/scripts/release-cadence.ts`). It picks the candidate exactly as any cut does
 (the newest green, gated commit; nothing ungated ever ships) and then cuts when
 one of three triggers holds, each over its own floor since `stable` last moved:
 
@@ -145,7 +151,7 @@ its CHANGELOG entry appears in the release after that.
 needs a release PR after it. The daily run never stamps or opens one: the
 Captain runs `gstack-release-stamp open` in the same turn it lands a PR whose
 fragment carries `important:`, and lands the release PR once its checks pass
-([captain.md](captain.md#direct-land-merge-direct)). When any trigger is due
+([captain.md](../crew/docs/captain.md#direct-land-merge-direct)). When any trigger is due
 but the candidate's VERSION is already released on an older commit, the run is
 `NO_RELEASE_PR: important change waiting, no release PR: …` (or `stable is 7
 days old, no release PR`, or `regular cut due, no release PR`) and goes red
@@ -441,7 +447,7 @@ gh run watch
 The step summary carries the same plan plus the full release notes.
 
 A pull request that touches `.github/workflows/weekly-release.yml`,
-`scripts/release-cut.ts`, `scripts/release-cadence.ts` or
+`crew/scripts/release-cut.ts`, `crew/scripts/release-cadence.ts` or
 `lib/changelog-fragments.ts` runs the same dry run against main as its own job
 (`Dry run against main`, read-only token), once plain and once as the daily
 check, so a change to the release tooling is exercised against real check runs
