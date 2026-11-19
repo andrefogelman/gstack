@@ -917,13 +917,13 @@ describe('REVIEW_DASHBOARD resolver', () => {
     });
   }
 
-  test('plan-ceo-review chaining mentions eng (via /autoplan) and design reviews', () => {
+  test('plan-ceo-review chaining mentions eng and design reviews', () => {
     // Carved skill: the chaining prose lives in sections/*.md. (It used to
     // pass against the skeleton only because the preamble's routing-injection
     // rules incidentally named these skills — that prose moved into
     // bin/gstack-skill-start in token-reduction Phase 2.)
     const content = readSkillUnion('plan-ceo-review');
-    expect(content).toContain('Run /autoplan next (eng review)');
+    expect(content).toContain('/plan-eng-review');
     expect(content).toContain('/plan-design-review');
   });
 
@@ -933,9 +933,9 @@ describe('REVIEW_DASHBOARD resolver', () => {
     expect(content).toContain('/plan-ceo-review');
   });
 
-  test('plan-design-review chaining mentions eng (via /autoplan), ceo, and design skills', () => {
+  test('plan-design-review chaining mentions eng, ceo, and design skills', () => {
     const content = readSkillUnion('plan-design-review');
-    expect(content).toContain('Run /autoplan next (eng review)');
+    expect(content).toContain('/plan-eng-review');
     expect(content).toContain('/plan-ceo-review');
     expect(content).toContain('/design-shotgun');
     expect(content).toContain('/design-html');
@@ -1303,7 +1303,7 @@ describe('PLAN_FILE_REVIEW_REPORT resolver', () => {
     expect(content).toContain('Findings');
     expect(content).toContain('VERDICT');
     expect(content).toContain('/plan-ceo-review');
-    expect(content).toContain('| Eng Review | `/autoplan` |');
+    expect(content).toContain('/plan-eng-review');
     expect(content).toContain('/plan-design-review');
     expect(content).toContain('/codex review');
   });
@@ -2061,7 +2061,7 @@ describe('office-hours closing reads the builder profile before logging the sess
       const home = path.join(dir, 'home'), state = path.join(dir, 'state');
       const bin = path.join(home, '.claude/skills/gstack/bin');
       fs.mkdirSync(bin, { recursive: true });
-      for (const file of ['gstack-builder-profile', 'gstack-developer-profile', 'gstack-state-root.sh', 'gstack-slug', 'gstack-remote-identity.sh']) {
+      for (const file of ['gstack-builder-profile', 'gstack-developer-profile', 'gstack-lock.sh', 'gstack-state-root.sh', 'gstack-slug', 'gstack-remote-identity.sh']) {
         fs.copyFileSync(path.join(ROOT, 'bin', file), path.join(bin, file));
         fs.chmodSync(path.join(bin, file), 0o755);
       }
@@ -2965,11 +2965,45 @@ describe('Codex generation (--host codex)', () => {
       const tmpl = fs.readFileSync(path.join(ROOT, dir, 'SKILL.md.tmpl'), 'utf-8');
       const prompt = extractCodexDefaultPrompt(tmpl);
       expect(prompt, `${dir} declares codex_default_prompt`).toBeDefined();
-      expect(prompt!, dir).toContain(`$gstack-${dir}`);
+      expect(prompt!, dir).toContain(`$${dir} `);
       expect(prompt!, `${dir}: a prompt tells the picker what the skill is for`).not.toBe(`Use gstack-${dir} for this task.`);
       const yaml = Bun.YAML.parse(fs.readFileSync(path.join(AGENTS_DIR, `gstack-${dir}`, 'agents', 'openai.yaml'), 'utf-8')) as { interface: { default_prompt: string } };
       expect(yaml.interface.default_prompt, dir).toBe(prompt!);
     }
+  });
+
+  // Codex 0.170 lists and mentions a skill by its SKILL.md name: (`review`), not
+  // its gstack-review folder, so `$gstack-review` loads nothing (GST-3196).
+  // Value: protects=every $-mention a Codex user is shown loads a listed skill; fails_when=a template, the Codex render or a doc says $gstack-<skill> where Codex lists <skill>; why_new=the prompt test above checks only seven templates and no docs; seam=none; no_claim=Codex's own mention parser
+  test('every $gstack- mention in the Codex render and the docs names a skill Codex lists', () => {
+    const listed = new Set<string>();
+    const files: string[] = [];
+    const walk = (dir: string) => {
+      for (const e of fs.readdirSync(dir, { withFileTypes: true })) {
+        const p = path.join(dir, e.name);
+        if (e.isDirectory()) walk(p);
+        else if (e.isFile() && /\.(md|ya?ml)$/.test(e.name)) files.push(p);
+      }
+    };
+    for (const skill of fs.readdirSync(AGENTS_DIR)) {
+      const md = path.join(AGENTS_DIR, skill, 'SKILL.md');
+      if (!fs.existsSync(md)) continue;
+      const name = fs.readFileSync(md, 'utf-8').match(/^---\n[\s\S]*?^name:[ \t]*(\S+)/m)?.[1];
+      if (name) listed.add(name);
+      walk(path.join(AGENTS_DIR, skill));
+    }
+    expect(listed.has('review') && listed.has('gstack-upgrade')).toBe(true);
+    const docs = ['README.md', 'docs/hosts.md', 'docs/skills.md', 'docs/skill-routing-and-contracts.md', 'docs/troubleshooting.md'];
+    const bad: string[] = [];
+    for (const f of [...files, ...docs.map(d => path.join(ROOT, d))]) {
+      for (const m of fs.readFileSync(f, 'utf-8').matchAll(/\$(gstack-[a-z0-9-]*[a-z0-9])/g)) {
+        if (!listed.has(m[1])) bad.push(`${path.relative(f.startsWith(AGENTS_DIR) ? AGENTS_DIR : ROOT, f)}: $${m[1]}`);
+      }
+    }
+    expect(bad).toEqual([]);
+    const codexRow = fs.readFileSync(path.join(ROOT, 'README.md'), 'utf-8').split('\n').find(l => l.startsWith('| OpenAI Codex CLI |'));
+    const first = codexRow?.split('|')[4]?.match(/`\$([a-z0-9-]+)`/)?.[1];
+    expect(first && listed.has(first) ? first : codexRow).toBe('office-hours');
   });
 
   test('a template without codex_default_prompt: keeps the generic default_prompt', () => {
@@ -3853,7 +3887,10 @@ describe('setup script validation', () => {
     expect(fnBody).toContain('$codex_gstack/lib');
     expect(fnBody).toContain('browse/dist');
     expect(fnBody).toContain('browse/bin');
-    expect(fnBody).toContain('gstack-upgrade/SKILL.md');
+    expect(fnBody).toContain('_link_codex_skill_refs "$agents_dir" "$codex_gstack"');
+    const refs = setupContent.slice(setupContent.indexOf('_link_codex_skill_refs() {'), setupContent.indexOf('\n}\n', setupContent.indexOf('_link_codex_skill_refs() {')));
+    expect(refs).toContain('for s in gstack-upgrade office-hours plan-design-review; do');
+    expect(refs).toContain('_link_or_copy');
     expect(fnBody).toContain('_link_runtime_dists "$gstack_dir" "$codex_gstack"');
     expect(fnBody).not.toContain('_link_or_copy "$gstack_dir" "$codex_gstack"');
     // Review runtime assets: individual files from the shared helper, never

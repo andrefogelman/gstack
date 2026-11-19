@@ -2,7 +2,7 @@
 name: codex
 preamble-tier: 3
 version: 1.0.0
-description: OpenAI Codex CLI wrapper — three modes. (gstack)
+description: "OpenAI Codex CLI wrapper — three modes. Use for: codex review, second opinion, outside voice challenge. (gstack)"
 triggers:
   - codex review
   - second opinion
@@ -20,7 +20,7 @@ allowed-tools:
 
 ## Shared preamble (load first)
 
-This skill follows gstack shared preamble `4e82fa4c839f` (AskUserQuestion format, voice, writing, completeness and completion rules). If your Read of that file, headed by this id, is still in context, do not read it again; otherwise Read `~/.claude/skills/gstack/codex/sections/preamble.md` in full before the command below. A section or subsection here with a shared heading replaces the shared one.
+This skill follows gstack shared preamble `d8804c5ab6bf` (AskUserQuestion format, voice, writing, completeness and completion rules). If your Read of that file, headed by this id, is still in context, do not read it again; otherwise Read `~/.claude/skills/gstack/codex/sections/preamble.md` in full before the command below. A section or subsection here with a shared heading replaces the shared one.
 
 ## Preamble (run first)
 
@@ -438,7 +438,7 @@ Produce this markdown table:
 |--------|---------|-----|------|--------|----------|
 | CEO Review | \`/plan-ceo-review\` | Scope & strategy | {runs} | {status} | {findings} |
 | Outside Review | {recorded provider and trigger} | Independent 2nd opinion | {runs} | {outside_status} | {findings} |
-| Eng Review | \`/autoplan\` | Architecture & tests (required) | {runs} | {status} | {findings} |
+| Eng Review | \`/plan-eng-review\` | Architecture & tests (required) | {runs} | {status} | {findings} |
 | Design Review | \`/plan-design-review\` | UI/UX gaps | {runs} | {status} | {findings} |
 | DX Review | \`/plan-devex-review\` | Developer experience gaps | {runs} | {status} | {findings} |
 \`\`\`
@@ -560,7 +560,13 @@ If token count is not available, display: `Tokens: unknown`
 ## Error Handling
 
 - **Binary not found:** Detected in Step 0. Stop with install instructions.
-- **Auth error:** Codex prints an auth error to stderr. Surface the error:
+- **Budget or quota stop (HTTP 402, payment required, quota):** the validator prints
+  `unavailable: the provider refused the review with HTTP 402` or names the quota. This is
+  not an auth error, even when the provider's message mentions the API key. Relay Codex's line
+  and tell the user: "Codex refused the call because its budget or quota is used up. Check the
+  allowance on the proxy or gateway in front of the provider, or the account's quota and
+  credits; logging in again will not fix it."
+- **Auth error:** Codex prints an auth error to stderr (401 or 403). Surface the error:
   "Codex authentication failed. Run `codex login` in your terminal to authenticate via ChatGPT."
 - **Timeout (Bash outer gate):** Every Bash gate sits ABOVE its inner wrapper (360s gate
   over the 330s review wrapper; 600s gate, the tool maximum, over the 540s challenge/consult

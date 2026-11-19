@@ -2,7 +2,7 @@
 name: verify
 preamble-tier: 1
 version: 0.1.0
-description: "Use when coding: run the checks and tests /ship picks until green. (gstack)"
+description: "Use when coding: run the checks and tests /ship picks until green. Use for: verify my change, run the checks, make the tests pass. (gstack)"
 triggers:
   - verify my change
   - run the checks
@@ -20,6 +20,26 @@ allowed-tools:
 ---
 <!-- AUTO-GENERATED from SKILL.md.tmpl — do not edit directly -->
 <!-- Regenerate: bun run gen:skill-docs -->
+
+## Right before a commit: the quick pass
+
+Use only this section when you started /verify yourself because you are about
+to run `git commit` (Claude Code asks for /verify before every commit), and the
+user has not typed /verify or asked you to verify or run the checks in this
+conversation. The arguments `quick` or `pre-commit` mean the same. When the
+user typed /verify, skip this section and run the full skill below.
+
+Skip the preamble and everything after this section: edit nothing, add no
+tests, ask nothing. Run one command with a Bash timeout of 10 minutes:
+
+```bash
+"$HOME/.claude/skills/gstack/bin/gstack-checks" quick
+```
+
+It ends with one line. `VERIFY PASS: …` or `VERIFY skipped: <reason>`: go on
+with the commit, and mention /verify only by quoting that line. `VERIFY FAIL:
+…` (exit 1): don't commit over it; quote the line and the failing output to
+the user and ask whether to fix it first or commit anyway.
 
 ## Preamble (run first)
 
@@ -99,6 +119,13 @@ Reply in the language of the user's latest message unless asked otherwise. Code,
 
 The user has context you do not. Cross-model agreement is a recommendation, not a decision. The user decides.
 
+## Ground Rules
+
+- Never print a whole environment, git config or process table; tokens ride in them. Banned: `env`, bare `printenv`, `set` or `export` (or an empty `export $(...)`), `export -p`/`-n`, `declare -p`/`-x`, `typeset -p`, `set -x`, `git config --list`/`-l`, any `ps` with full args (`aux`, `-ef`, `-o args`), `docker top ... args`, `docker inspect` Env. Read one value by name (`git config --get <name>`), check a variable with `[ -n "${NAME:-}" ] && echo set`, list processes by name or pid.
+- Wait on CI with one `gstack-pr-wait <n> --until green` call, never a poll loop or `gh pr checks --watch`.
+- Ask each question once, after checking what you can yourself; until it is answered, list it as one waiting line in later updates instead of asking again.
+- Open every file you hand over and remove placeholders first: TODO, `<fill in>`, lorem ipsum, broken links and images.
+
 ## Completion Status Protocol
 
 When completing a skill workflow, report status using one of:
@@ -152,7 +179,8 @@ Skills that run plan reviews (`/plan-*-review`, `/codex review`) include the EXI
 # /verify — build, check, fix, repeat
 
 Use this while building, before /ship. It runs checks and fixes code. It never
-reviews, bumps a version, edits CHANGELOG, pushes, or opens a PR: that is /ship.
+reviews, bumps a version, pushes, or opens a PR: that is /ship. A changelog entry
+the repo expects with a change is part of the change.
 
 ## 1. See what will run
 
@@ -192,7 +220,7 @@ and a log path. Exit 0 is green; only `PASS` is green.
   A `FAIL` whose own error says a service, secret or env var is missing is
   the same: report it, do not stub or skip it.
 - Rerun one check with `"$C" run --only <name>` while fixing it, then a full
-  `run` before you stop.
+  `run` after your last edit, before you stop.
 
 Never weaken, skip, delete or edit a test, a checker config or a package.json
 script to get green.

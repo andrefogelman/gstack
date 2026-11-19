@@ -16,7 +16,6 @@ const code = (s: string) => '\u0060' + s + '\u0060';
 
 export type ContractItem =
   | { id: string; kind: 'report_labels'; heading: string; labels: string[] }
-  | { id: string; kind: 'check_after_last_edit' }
   | { id: string; kind: 'selected_specialists_dispatched'; marker: string }
   | { id: string; kind: 'agent_dispatch'; match: string };
 
@@ -27,13 +26,12 @@ export interface SkillContract {
 
 const KIND_FIELDS: Record<ContractItem['kind'], string[]> = {
   report_labels: ['heading', 'labels'],
-  check_after_last_edit: [],
   selected_specialists_dispatched: ['marker'],
   agent_dispatch: ['match'],
 };
 
 // The resolver and section that render the step each kind checks today. A host that suppresses the resolver, or a loadout that excludes the section, never shows that step, so its items are left out of the list there.
-const BACKED_BY: Partial<Record<ContractItem['kind'], { resolver: string; section: string }>> = {
+export const BACKED_BY: Partial<Record<ContractItem['kind'], { resolver: string; section: string }>> = {
   selected_specialists_dispatched: { resolver: 'REVIEW_ARMY', section: 'review-army' },
   agent_dispatch: { resolver: 'ADVERSARIAL_STEP', section: 'adversarial' },
 };
@@ -107,7 +105,6 @@ const list = (xs: string[]) => xs.length < 2 ? xs.join('') : xs.slice(0, -1).joi
 function plainWords(item: ContractItem): string {
   switch (item.kind) {
     case 'report_labels': return 'a ' + code(item.heading) + ' with ' + list(item.labels) + ' filled in (' + code('none: <why>') + ' where the skill\'s own stop rule leaves one empty)';
-    case 'check_after_last_edit': return 'a test or repro command run after your last edit';
     case 'selected_specialists_dispatched': return 'the specialist selection printed (' + code(item.marker) + ' ...), then one Agent dispatch per specialist it names (none when a small diff skips them)';
     case 'agent_dispatch': return 'an Agent dispatch for the ' + item.id.replace(/-/g, ' ') + ', its prompt including "' + item.match + '"';
   }
